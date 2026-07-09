@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase, rowToUser, rowToEmail, rowToDraft, rowToPayment, rowToKbCard, rowToAudit } from "./supabase";
 import {
   Inbox, Bot, ShieldCheck, BookOpen, Lock, ClipboardList, LogOut,
   CheckCircle2, XCircle, Pencil, CreditCard, GraduationCap,
@@ -156,19 +157,18 @@ export default function App() {
   const [regionFilter, setRegionFilter] = useState("all");
   const [toast, setToast] = useState(null);
 
-  const [users, setUsers] = useState(INITIAL_USERS);
-  const [emails, setEmails] = useState(INITIAL_EMAILS);
+  const [users, setUsers] = useState([]);
+  const [emails, setEmails] = useState([]);
   const [drafts, setDrafts] = useState([]);
-  const [payments, setPayments] = useState(INITIAL_PAYMENTS);
-  const [kbCards, setKbCards] = useState(INITIAL_KB);
+  const [payments, setPayments] = useState([]);
+  const [kbCards, setKbCards] = useState([]);
   const [bauState, setBauState] = useState(() => {
     const init = {};
     BAU_PROCESSES.forEach(p => { init[p.id] = {}; });
     return init;
   });
-  const [auditLog, setAuditLog] = useState([
-    { id: "a0", at: "2026-06-15 08:00", actor: "System", action: "seed", detail: "Prototype data initialized", region: "-" },
-  ]);
+  const [auditLog, setAuditLog] = useState([]);
+  const [dataReady, setDataReady] = useState(false);
   const [newCard, setNewCard] = useState({ title: "", body: "", region: "all" });
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
@@ -182,11 +182,107 @@ export default function App() {
     setTimeout(() => setToast(null), 2600);
   }
 
+  /* Fire a Supabase write and surface failures without blocking the UI. */
+  function dbWrite(query) {
+    Promise.resolve(query).then(({ error }) => {
+      if (error) pushToast("Sync error: " + error.message);
+    });
+  }
+
+  function bauStateFromRows(rows) {
+    const init = {};
+    BAU_PROCESSES.forEach(p => { init[p.id] = {}; });
+    rows.forEach(r => {
+      init[r.process_id] = { ...(init[r.process_id] || {}), [r.stage_id]: { confirmations: r.confirmations || [] } };
+    });
+    return init;
+  }
+
+  /* Initial load: hydrate all state from Supabase. */
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAll() {
+      const [u, e, d, p, k, b, a] = await Promise.all([
+        supabase.from("users").select("*").order("id"),
+        supabase.from("emails").select("*").order("received_at", { ascending: false }),
+        supabase.from("drafts").select("*").order("created_at"),
+        supabase.from("payments").select("*").order("id"),
+        supabase.from("kb_cards").select("*").order("updated_at", { ascending: false }),
+        supabase.from("bau_checks").select("*"),
+        supabase.from("audit_log").select("*").order("at", { ascending: false }),
+      ]);
+      if (cancelled) return;
+      const failed = [u, e, d, p, k, b, a].find(r => r.error);
+      if (failed) { pushToast("Could not load data: " + failed.error.message); return; }
+      setUsers(u.data.map(rowToUser));
+      setEmails(e.data.map(rowToEmail));
+      setDrafts(d.data.map(rowToDraft));
+      setPayments(p.data.map(rowToPayment));
+      setKbCards(k.data.map(rowToKbCard));
+      setBauState(bauStateFromRows(b.data));
+      setAuditLog(a.data.map(rowToAudit));
+      setDataReady(true);
+    }
+    loadAll();
+    return () => { cancelled = true; };
+  }, []);
+
+  /* Realtime: apply changes made by other users as they happen. */
+  useEffect(() => {
+    function upsertBy(setList, mapRow, payload, { prepend = false } = {}) {
+      if (payload.eventType === "DELETE") {
+        const oldId = payload.old?.id;
+        if (oldId) setList(prev => prev.filter(x => x.id !== oldId));
+        return;
+      }
+      const item = mapRow(payload.new);
+      setList(prev => prev.some(x => x.id === item.id)
+        ? prev.map(x => x.id === item.id ? item : x)
+        : (prepend ? [item, ...prev] : [...prev, item]));
+    }
+
+    const channel = supabase.channel("ops-console-sync")
+      .on("postgres_changes", { event: "*", schema: "public" }, payload => {
+        switch (payload.table) {
+          case "users": upsertBy(setUsers, rowToUser, payload); break;
+          case "emails": upsertBy(setEmails, rowToEmail, payload); break;
+          case "drafts": upsertBy(setDrafts, rowToDraft, payload); break;
+          case "payments": upsertBy(setPayments, rowToPayment, payload); break;
+          case "kb_cards": upsertBy(setKbCards, rowToKbCard, payload, { prepend: true }); break;
+          case "audit_log": upsertBy(setAuditLog, rowToAudit, payload, { prepend: true }); break;
+          case "bau_checks": {
+            if (payload.eventType === "DELETE") {
+              const { process_id, stage_id } = payload.old || {};
+              if (!process_id) break;
+              setBauState(prev => {
+                const proc = { ...(prev[process_id] || {}) };
+                if (stage_id) delete proc[stage_id];
+                return { ...prev, [process_id]: stage_id ? proc : {} };
+              });
+            } else {
+              const r = payload.new;
+              setBauState(prev => ({
+                ...prev,
+                [r.process_id]: { ...(prev[r.process_id] || {}), [r.stage_id]: { confirmations: r.confirmations || [] } },
+              }));
+            }
+            break;
+          }
+          default: break;
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   function addAudit(action, detail, region) {
-    setAuditLog(prev => [
-      { id: "a" + (prev.length + 1) + "-" + Date.now(), at: new Date().toISOString().slice(0, 16).replace("T", " "), actor: currentUser.name, action, detail, region: region || "-" },
-      ...prev,
-    ]);
+    const entry = {
+      id: "a" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+      at: new Date().toISOString().slice(0, 16).replace("T", " "),
+      actor: currentUser.name, action, detail, region: region || "-",
+    };
+    setAuditLog(prev => [entry, ...prev]);
+    dbWrite(supabase.from("audit_log").insert({ id: entry.id, at: entry.at, actor: entry.actor, action: entry.action, detail: entry.detail, region: entry.region }));
   }
 
   function login(user) {
@@ -200,6 +296,7 @@ export default function App() {
   /* ---- adhoc: email queue actions ---- */
   function assignEmail(email) {
     setEmails(prev => prev.map(e => e.id === email.id ? { ...e, status: "assigned", assignedTo: currentUser.id } : e));
+    dbWrite(supabase.from("emails").update({ status: "assigned", assigned_to: currentUser.id }).eq("id", email.id));
     addAudit("Assign email", `${email.subject} assigned to ${currentUser.name}`, email.region);
   }
 
@@ -207,12 +304,15 @@ export default function App() {
     setGenLoading(email.id);
     setTimeout(() => {
       const text = AI_TEMPLATES[email.category](REGIONS[email.region].short);
-      setDrafts(prev => [...prev, {
+      const draft = {
         id: "d" + Date.now(), emailId: email.id, text, status: "pending",
         createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
         reviewerNote: "", goodExample: false,
-      }]);
+      };
+      setDrafts(prev => prev.some(d => d.id === draft.id) ? prev : [...prev, draft]);
       setEmails(prev => prev.map(e => e.id === email.id ? { ...e, status: "in_review" } : e));
+      dbWrite(supabase.from("drafts").insert({ id: draft.id, email_id: draft.emailId, text: draft.text, status: draft.status, created_at: draft.createdAt, reviewer_note: "", good_example: false }));
+      dbWrite(supabase.from("emails").update({ status: "in_review" }).eq("id", email.id));
       addAudit("Generate AI draft", `Draft created for "${email.subject}"`, email.region);
       setGenLoading(null);
       pushToast("AI draft generated — sent to review queue");
@@ -224,6 +324,8 @@ export default function App() {
     const email = emails.find(e => e.id === draft.emailId);
     setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: "approved", text: textOverride || d.text } : d));
     setEmails(prev => prev.map(e => e.id === draft.emailId ? { ...e, status: "approved" } : e));
+    dbWrite(supabase.from("drafts").update({ status: "approved", text: textOverride || draft.text }).eq("id", draft.id));
+    dbWrite(supabase.from("emails").update({ status: "approved" }).eq("id", draft.emailId));
     addAudit("Approve AI draft", `Reply to "${email.subject}" approved and marked sent (mock — no real email sent)`, email.region);
     pushToast("Draft approved — marked as sent (mock)");
     setEditingDraftId(null);
@@ -233,6 +335,8 @@ export default function App() {
     const email = emails.find(e => e.id === draft.emailId);
     setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: "rejected", reviewerNote: note } : d));
     setEmails(prev => prev.map(e => e.id === draft.emailId ? { ...e, status: "assigned" } : e));
+    dbWrite(supabase.from("drafts").update({ status: "rejected", reviewer_note: note || "" }).eq("id", draft.id));
+    dbWrite(supabase.from("emails").update({ status: "assigned" }).eq("id", draft.emailId));
     addAudit("Reject AI draft", `Draft for "${email.subject}" rejected: ${note || "no comment"}`, email.region);
     pushToast("Draft rejected — returned to agent");
     setRejectingId(null);
@@ -241,29 +345,29 @@ export default function App() {
 
   function toggleGoodExample(draft) {
     setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, goodExample: !d.goodExample } : d));
+    dbWrite(supabase.from("drafts").update({ good_example: !draft.goodExample }).eq("id", draft.id));
     const email = emails.find(e => e.id === draft.emailId);
     addAudit("Curate training example", `${!draft.goodExample ? "Marked" : "Unmarked"} reply to "${email?.subject}" as a good example`, email?.region);
   }
 
   /* ---- payment actions (admin only, outside BAU checklist — direct override) ---- */
   function changePaymentStatus(payment, newStatus) {
-    setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: newStatus, updatedAt: new Date().toISOString().slice(0, 10) } : p));
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: newStatus, updatedAt } : p));
+    dbWrite(supabase.from("payments").update({ status: newStatus, updated_at: updatedAt }).eq("id", payment.id));
     addAudit("Change payment status", `${payment.customer}: ${STATUS_LABEL[payment.status]} → ${STATUS_LABEL[newStatus]} (mock, manual)`, payment.region);
     pushToast("Payment status updated (mock)");
   }
 
   /* ---- BAU checkpoint actions ---- */
   function checkStage(processId, stage) {
-    setBauState(prev => {
-      const proc = prev[processId] || {};
-      const existing = proc[stage.id] || { confirmations: [] };
-      if (existing.confirmations.includes(currentUser.id)) return prev;
-      const confirmations = [...existing.confirmations, currentUser.id];
-      return { ...prev, [processId]: { ...proc, [stage.id]: { confirmations } } };
-    });
+    const existing = bauState[processId]?.[stage.id]?.confirmations || [];
+    if (existing.includes(currentUser.id)) return;
+    const confirmations = [...existing, currentUser.id];
+    setBauState(prev => ({ ...prev, [processId]: { ...(prev[processId] || {}), [stage.id]: { confirmations } } }));
+    dbWrite(supabase.from("bau_checks").upsert({ process_id: processId, stage_id: stage.id, confirmations }));
     const needed = stage.dual ? 2 : 1;
-    const already = (bauState[processId]?.[stage.id]?.confirmations || []).length;
-    const willComplete = already + 1 >= needed;
+    const willComplete = confirmations.length >= needed;
     const process = BAU_PROCESSES.find(p => p.id === processId);
     addAudit(
       stage.dual ? "BAU dual-control confirmation" : "BAU checkpoint completed",
@@ -275,6 +379,7 @@ export default function App() {
 
   function resetCycle(processId) {
     setBauState(prev => ({ ...prev, [processId]: {} }));
+    dbWrite(supabase.from("bau_checks").delete().eq("process_id", processId));
     const process = BAU_PROCESSES.find(p => p.id === processId);
     addAudit("Start new BAU cycle", `${process.name} reset for a new cycle`, "-");
     pushToast(`New cycle started for ${process.name}`);
@@ -284,14 +389,17 @@ export default function App() {
   function createCard() {
     if (!newCard.title.trim() || !newCard.body.trim()) { pushToast("Title and body are required"); return; }
     const card = { id: "k" + Date.now(), title: newCard.title, body: newCard.body, region: newCard.region, status: "draft", author: currentUser.name, updatedAt: new Date().toISOString().slice(0, 10) };
-    setKbCards(prev => [card, ...prev]);
+    setKbCards(prev => prev.some(c => c.id === card.id) ? prev : [card, ...prev]);
+    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, region: card.region, status: card.status, author: card.author, updated_at: card.updatedAt }));
     addAudit("Create knowledge card", `Draft created: "${card.title}"`, card.region);
     setNewCard({ title: "", body: "", region: "all" });
     pushToast("Draft card saved");
   }
 
   function publishCard(card) {
-    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, status: "published", updatedAt: new Date().toISOString().slice(0, 10) } : c));
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, status: "published", updatedAt } : c));
+    dbWrite(supabase.from("kb_cards").update({ status: "published", updated_at: updatedAt }).eq("id", card.id));
     addAudit("Publish knowledge card", `Published: "${card.title}"`, card.region);
     pushToast("Card published to knowledge base");
   }
@@ -299,11 +407,12 @@ export default function App() {
   /* ---- access control actions ---- */
   function toggleUserActive(user) {
     setUsers(prev => prev.map(u => u.id === user.id ? { ...u, active: !u.active } : u));
+    dbWrite(supabase.from("users").update({ active: !user.active }).eq("id", user.id));
     addAudit("Toggle user access", `${user.name} set to ${!user.active ? "active" : "inactive"}`, user.region ? REGIONS[user.region].short : "-");
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onLogin={login} defaultUser={users.find(u => u.id === "u5")} />;
+  if (!currentUser) return <LoginScreen onLogin={login} defaultUser={users.find(u => u.id === "u5")} ready={dataReady} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedEmails = currentUser.role === "agent"
@@ -451,7 +560,7 @@ const LOGIN_FEATURES = [
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
-function LoginScreen({ onLogin, defaultUser }) {
+function LoginScreen({ onLogin, defaultUser, ready }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -459,6 +568,10 @@ function LoginScreen({ onLogin, defaultUser }) {
   function submit(e) {
     e.preventDefault();
     if (username === "admin123" && password === "admin123") {
+      if (!ready || !defaultUser) {
+        setError("Connecting to the database — try again in a moment.");
+        return;
+      }
       setError("");
       onLogin(defaultUser);
     } else {
