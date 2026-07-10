@@ -124,7 +124,7 @@ const BAU_GROUPS = ["Fulfillment", "Logistics"];
 
 const NAV = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["agent", "reviewer", "admin"] },
-  { id: "bau", label: "BAU", icon: Repeat, roles: ["agent", "reviewer", "admin"] },
+  { id: "bau", label: "Payments", icon: CreditCard, roles: ["agent", "reviewer", "admin"] },
   { id: "adhoc", label: "Adhoc", icon: Inbox, roles: ["agent", "reviewer", "admin"] },
   { id: "kb", label: "Knowledge base", icon: BookOpen, roles: ["agent", "reviewer", "admin"] },
   { id: "training", label: "Training & SOPs", icon: GraduationCap, roles: ["agent", "reviewer", "admin"] },
@@ -494,7 +494,11 @@ export default function App() {
           )}
 
           {view === "bau" && (
-            <BauConsole bauState={bauState} currentUser={currentUser} onCheck={checkStage} onReset={resetCycle} />
+            <PaymentsHub
+              onOpenPaymentStatus={() => { setView("kb"); setKbTab("payments"); }}
+              onOpenKb={() => { setView("kb"); setKbTab("published"); }}
+              onLocked={name => pushToast(`"${name}" is coming next — we'll build this out as we proceed`)}
+            />
           )}
 
           {view === "adhoc" && (
@@ -670,6 +674,57 @@ function LoginScreen({ onLogin, defaultUser, ready }) {
         </div>
       </section>
     </main>
+  );
+}
+
+const PAYMENT_CARDS = [
+  { id: "upload_summary", title: "Upload summary and send mails", desc: "Upload the cycle summary and trigger vendor mails", icon: Send, tint: "blue" },
+  { id: "create_po_srn", title: "Create POs and SRNs", desc: "Raise purchase orders and service receipt notes", icon: PlusCircle, tint: "green" },
+  { id: "payment_status", title: "Check payment status", desc: "Live status of vendor payments", icon: CreditCard, tint: "orange" },
+  { id: "approve_po_srn", title: "Approve POs and SRNs", desc: "Review and approve pending POs and SRNs", icon: CheckCircle2, tint: "purple" },
+  { id: "credit_notes", title: "Credit Note Tracker", desc: "Track credit notes raised and settled", icon: ListChecks, tint: "cyan" },
+  { id: "vendor_contracts", title: "Vendor contracts and rate cards", desc: "Contracts and agreed rates by vendor", icon: Pencil, tint: "pink" },
+  { id: "consumables", title: "Consumables Contracts, Rate cards and Monthly Budgets", desc: "Consumables agreements and budget tracking", icon: Package, tint: "blue" },
+  { id: "adhoc_service", title: "Ad-hoc Service tracking: Car and others", desc: "One-off services and vehicle hire tracking", icon: Truck, tint: "green" },
+  { id: "payroll", title: "Payroll processing", desc: "Monthly payroll runs and approvals", icon: Wallet, tint: "orange" },
+  { id: "payments_kb", title: "Payments knowledge base", desc: "SOPs and how-tos for payment operations", icon: BookOpen, tint: "purple" },
+];
+
+function PaymentsHub({ onOpenPaymentStatus, onOpenKb, onLocked }) {
+  const [group, setGroup] = useState("fulfillment");
+  const groupLabel = group === "fulfillment" ? "Fulfillment" : "Logistics";
+
+  function handleClick(card) {
+    if (card.id === "payment_status") return onOpenPaymentStatus();
+    if (card.id === "payments_kb") return onOpenKb();
+    onLocked(`${groupLabel} — ${card.title}`);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 170px)" }}>
+      <SubTabs
+        tabs={[{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }]}
+        active={group} onChange={setGroup}
+      />
+      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0 0" }}>
+        {groupLabel} payment operations — pick a workstream to continue.
+      </p>
+      <div className="mo-paygrid">
+        {PAYMENT_CARDS.map(card => {
+          const Icon = card.icon;
+          return (
+            <button key={card.id} className="mo-card mo-clickable mo-paycard" onClick={() => handleClick(card)}>
+              <span className={`feature-icon ${card.tint}`}><Icon size={18} /></span>
+              <span style={{ fontWeight: 900, fontSize: 15, lineHeight: 1.3, color: "var(--mo-ink)" }}>{card.title}</span>
+              <span style={{ fontSize: 12.5, color: "var(--mo-muted)", lineHeight: 1.45 }}>{card.desc}</span>
+              <span style={{ marginTop: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 800, color: "var(--mo-accent)" }}>
+                Open <ChevronRight size={13} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1377,6 +1432,12 @@ body {
 .mo-stagerow:last-child { border-bottom: none; }
 .mo-stage-icon { display:flex; align-items:center; justify-content:center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--mo-border); color: var(--mo-muted); flex-shrink: 0; }
 .mo-stage-done { background: linear-gradient(135deg, var(--mo-success), #22c55e); border-color: transparent; color: #fff; }
+.mo-paygrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 16px; flex: 1; margin-top: 16px; }
+.mo-paycard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; min-height: 180px; border: 1px solid rgba(255,255,255,0.74); }
+@media (max-width: 1500px) { .mo-paygrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1200px) { .mo-paygrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 860px) { .mo-paygrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .mo-paygrid { grid-template-columns: 1fr; } }
 
 /* ---- Portal login (style adopted from Admin Master Dashboard) ---- */
 .portal-login { position: relative; display: grid; height: 100vh; overflow: hidden; grid-template-columns: minmax(0, 1.45fr) minmax(410px, 0.55fr); grid-template-rows: auto minmax(0, 1fr); gap: 36px; padding: 30px 48px 24px; color: #fff; font-family: var(--mo-body); }
