@@ -8,7 +8,7 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_k
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* Row mappers: snake_case DB rows <-> camelCase app objects */
-export const rowToUser = r => ({ id: r.id, name: r.name, role: r.role, region: r.region, active: r.active });
+export const rowToUser = r => ({ id: r.id, name: r.name, role: r.role, region: r.region, active: r.active, title: r.title || "", regions: r.regions || (r.region ? [r.region] : []) });
 export const rowToEmail = r => ({ id: r.id, region: r.region, from: r.from_addr, subject: r.subject, category: r.category, body: r.body, receivedAt: r.received_at, status: r.status, assignedTo: r.assigned_to, customerId: r.customer_id });
 export const rowToDraft = r => ({ id: r.id, emailId: r.email_id, text: r.text, status: r.status, createdAt: r.created_at, reviewerNote: r.reviewer_note, goodExample: r.good_example });
 export const rowToPayment = r => ({ id: r.id, customer: r.customer, region: r.region, amount: Number(r.amount), currency: r.currency, status: r.status, updatedAt: r.updated_at });

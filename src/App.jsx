@@ -412,7 +412,7 @@ export default function App() {
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onLogin={login} defaultUser={users.find(u => u.id === "u5")} ready={dataReady} />;
+  if (!currentUser) return <LoginScreen onLogin={login} defaultUser={users.find(u => u.id === "gaurav")} ready={dataReady} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedEmails = currentUser.role === "agent"
@@ -489,8 +489,8 @@ export default function App() {
 
         <main style={styles.content}>
           {view === "dashboard" && (
-            <Dashboard emails={emails} drafts={drafts} payments={payments} kbCards={kbCards} bauState={bauState}
-              onNavigate={setView} onLockedClick={m => pushToast(`"${m}" is planned for a later phase — not built in this prototype`)} />
+            <Dashboard users={users} emails={emails} drafts={drafts} payments={payments} auditLog={auditLog}
+              bauState={bauState} onNavigate={setView} />
           )}
 
           {view === "bau" && (
@@ -728,88 +728,175 @@ function PaymentsHub({ onOpenPaymentStatus, onOpenKb, onLocked }) {
   );
 }
 
-function Dashboard({ emails, drafts, payments, kbCards, bauState, onNavigate, onLockedClick }) {
-  const openEmails = emails.filter(e => !["approved", "resolved"].includes(e.status)).length;
-  const pendingReviews = drafts.filter(d => d.status === "pending").length;
-  const publishedCount = kbCards.filter(c => c.status === "published").length;
-  const curatedCount = drafts.filter(d => d.goodExample).length;
+const OPEN_EMAIL_STATUSES = ["unassigned", "assigned", "in_review"];
 
-  const bauProgress = BAU_PROCESSES.map(p => {
-    const total = p.stages.length;
-    const done = p.stages.filter(s => {
-      const need = s.dual ? 2 : 1;
-      return (bauState[p.id]?.[s.id]?.confirmations || []).length >= need;
-    }).length;
-    return { ...p, done, total };
+function Dashboard({ users, emails, drafts, payments, auditLog, bauState, onNavigate }) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const openEmails = emails.filter(e => OPEN_EMAIL_STATUSES.includes(e.status));
+  const unassigned = emails.filter(e => e.status === "unassigned");
+  const pendingReviews = drafts.filter(d => d.status === "pending");
+  const atRiskPayments = payments.filter(p => ["failed", "disputed"].includes(p.status));
+
+  let awaitingSecondApprover = 0;
+  BAU_PROCESSES.forEach(p => p.stages.forEach(s => {
+    const c = bauState[p.id]?.[s.id]?.confirmations || [];
+    if (s.dual && c.length === 1) awaitingSecondApprover++;
+  }));
+
+  /* Per-member workload, manager excluded from the load table */
+  const memberStats = users.filter(u => u.role !== "admin").map(u => {
+    const memberRegions = u.regions?.length ? u.regions : (u.region ? [u.region] : []);
+    const assigned = emails.filter(e => e.assignedTo === u.id);
+    const open = assigned.filter(e => ["assigned", "in_review"].includes(e.status));
+    const resolved = assigned.filter(e => ["approved", "resolved"].includes(e.status));
+    const reviewLoad = u.role === "reviewer"
+      ? pendingReviews.filter(d => {
+          const em = emails.find(e => e.id === d.emailId);
+          return em && memberRegions.includes(em.region);
+        }).length
+      : 0;
+    const memberAudit = auditLog.filter(a => a.actor === u.name);
+    const actionsToday = memberAudit.filter(a => a.at.startsWith(today)).length;
+    const pendingTotal = open.length + reviewLoad;
+    return { user: u, regions: memberRegions, open: open.length, resolved: resolved.length, reviewLoad, actionsToday, actionsTotal: memberAudit.length, pendingTotal };
+  });
+  const maxPending = Math.max(1, ...memberStats.map(m => m.pendingTotal));
+
+  /* Per-country rollups */
+  const regionBlocks = Object.values(REGIONS).map(r => {
+    const rEmails = emails.filter(e => e.region === r.id);
+    const rOpen = rEmails.filter(e => OPEN_EMAIL_STATUSES.includes(e.status));
+    const rUnassigned = rEmails.filter(e => e.status === "unassigned");
+    const rInReview = rEmails.filter(e => e.status === "in_review");
+    const rPayments = payments.filter(p => p.region === r.id);
+    const pendingAmt = rPayments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0);
+    const currency = rPayments[0]?.currency || "";
+    const rRisk = rPayments.filter(p => ["failed", "disputed"].includes(p.status));
+    const team = memberStats.filter(m => m.regions.includes(r.id));
+    return { region: r, open: rOpen.length, unassigned: rUnassigned.length, inReview: rInReview.length, pendingAmt, currency, risk: rRisk.length, team };
   });
 
+  const oldestUnassigned = [...unassigned].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)).slice(0, 4);
+
+  const kpis = [
+    { label: "Open emails", value: openEmails.length, sub: "across all countries", tint: "#2563eb", icon: Inbox, nav: "adhoc" },
+    { label: "Unassigned", value: unassigned.length, sub: "waiting for an owner", tint: "#f97316", icon: AlertTriangle, nav: "adhoc" },
+    { label: "Pending AI reviews", value: pendingReviews.length, sub: "drafts awaiting a decision", tint: "#7c3aed", icon: Bot, nav: "adhoc" },
+    { label: "Payments at risk", value: atRiskPayments.length, sub: "failed or disputed", tint: "#e11d48", icon: CreditCard, nav: "kb" },
+    { label: "Awaiting 2nd approver", value: awaitingSecondApprover, sub: "dual-control stages", tint: "#18b56f", icon: ShieldCheck, nav: "bau" },
+  ];
+
   return (
-    <div>
-      <p style={{ fontSize: 14, color: "var(--mo-muted)", margin: "0 0 20px", maxWidth: 640 }}>
-        Everything your team touches day to day lives in two places: <strong style={{ color: "var(--mo-ink)" }}>BAU</strong> for the recurring
-        company processes, and <strong style={{ color: "var(--mo-ink)" }}>Adhoc</strong> for customer enquiries that need judgment. Knowledge base and
-        training keep both grounded in one shared source of truth.
-      </p>
-
-      <div style={styles.grid4}>
-        <button className="mo-card mo-clickable" style={{ borderTop: "3px solid #6C4FE0" }} onClick={() => onNavigate("bau")}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ width: 26, height: 26, borderRadius: 8, background: "#6C4FE01A", display: "flex", alignItems: "center", justifyContent: "center" }}><Repeat size={14} color="#6C4FE0" /></span>
-            <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>BAU cycles in progress</span>
-          </div>
-          <div style={{ fontSize: 26, fontFamily: "var(--mo-display)", color: "var(--mo-ink)" }}>{bauProgress.filter(p => p.done > 0 && p.done < p.total).length}</div>
-          <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>of {BAU_PROCESSES.length} processes</div>
-        </button>
-        <button className="mo-card mo-clickable" style={{ borderTop: "3px solid #FF6B5E" }} onClick={() => onNavigate("adhoc")}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ width: 26, height: 26, borderRadius: 8, background: "#FF6B5E1A", display: "flex", alignItems: "center", justifyContent: "center" }}><Inbox size={14} color="#FF6B5E" /></span>
-            <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Open adhoc emails</span>
-          </div>
-          <div style={{ fontSize: 26, fontFamily: "var(--mo-display)", color: "var(--mo-ink)" }}>{openEmails}</div>
-          <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>across all regions</div>
-        </button>
-        <button className="mo-card mo-clickable" style={{ borderTop: "3px solid #8B5CF6" }} onClick={() => onNavigate("adhoc")}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ width: 26, height: 26, borderRadius: 8, background: "#8B5CF61A", display: "flex", alignItems: "center", justifyContent: "center" }}><Bot size={14} color="#8B5CF6" /></span>
-            <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Pending AI review</span>
-          </div>
-          <div style={{ fontSize: 26, fontFamily: "var(--mo-display)", color: "var(--mo-ink)" }}>{pendingReviews}</div>
-          <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>drafts awaiting a decision</div>
-        </button>
-        <button className="mo-card mo-clickable" style={{ borderTop: "3px solid #00B8A9" }} onClick={() => onNavigate("kb")}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ width: 26, height: 26, borderRadius: 8, background: "#00B8A91A", display: "flex", alignItems: "center", justifyContent: "center" }}><BookOpen size={14} color="#00B8A9" /></span>
-            <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Published knowledge cards</span>
-          </div>
-          <div style={{ fontSize: 26, fontFamily: "var(--mo-display)", color: "var(--mo-ink)" }}>{publishedCount}</div>
-          <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>{curatedCount} curated reply examples too</div>
-        </button>
-      </div>
-
-      <div style={{ marginTop: 24, marginBottom: 10, fontSize: 12.5, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>This month's BAU cycles</div>
-      <div style={styles.grid4}>
-        {bauProgress.map(p => {
-          const tint = p.group === "Fulfillment" ? "#6C4FE0" : "#00B8A9";
+    <div style={{ display: "grid", gap: 18 }}>
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
+        {kpis.map(k => {
+          const Icon = k.icon;
           return (
-            <button key={p.id} className="mo-card mo-clickable" style={{ borderTop: `3px solid ${tint}` }} onClick={() => onNavigate("bau")}>
-              <div style={{ fontSize: 10.5, color: tint, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>{p.group}</div>
-              <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--mo-ink)", marginBottom: 8 }}>{p.name.split("— ")[1] || p.name}</div>
-              <ProgressBar done={p.done} total={p.total} color={tint} />
-              <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>{p.done} of {p.total} stages complete</div>
+            <button key={k.label} className="mo-card mo-clickable" style={{ borderTop: `3px solid ${k.tint}` }} onClick={() => onNavigate(k.nav)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ width: 26, height: 26, borderRadius: 8, background: `${k.tint}1A`, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} color={k.tint} /></span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--mo-muted)" }}>{k.label}</span>
+              </div>
+              <div style={{ fontSize: 27, fontWeight: 900, color: "var(--mo-ink)" }}>{k.value}</div>
+              <div style={{ fontSize: 11.5, color: "var(--mo-muted)" }}>{k.sub}</div>
             </button>
           );
         })}
       </div>
 
-      <div style={{ marginTop: 24, marginBottom: 10, fontSize: 12.5, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Not part of this prototype</div>
-      <div style={styles.grid4}>
-        {LOCKED_MODULES.map(m => (
-          <button key={m.name} className="mo-lockedtile" onClick={() => onLockedClick(m.name)}>
-            <Lock size={16} style={{ marginBottom: 8, color: "var(--mo-muted)" }} />
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--mo-ink)" }}>{m.name}</div>
-            <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 4 }}>{m.phase}</div>
-          </button>
+      {/* Country rollups with team snapshot */}
+      <div style={styles.grid3}>
+        {regionBlocks.map(b => (
+          <div key={b.region.id} className="mo-card" style={{ borderTop: `3px solid ${b.region.color}`, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: b.region.color }} />
+                <span style={{ fontWeight: 900, fontSize: 15 }}>{b.region.name}</span>
+              </div>
+              {b.risk > 0 && <span className="mo-pill mo-pill-danger">{b.risk} payment{b.risk > 1 ? "s" : ""} at risk</span>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <div><div style={{ fontSize: 20, fontWeight: 900 }}>{b.open}</div><div style={{ fontSize: 11, color: "var(--mo-muted)" }}>open emails</div></div>
+              <div><div style={{ fontSize: 20, fontWeight: 900, color: b.unassigned ? "#b45309" : "var(--mo-ink)" }}>{b.unassigned}</div><div style={{ fontSize: 11, color: "var(--mo-muted)" }}>unassigned</div></div>
+              <div><div style={{ fontSize: 20, fontWeight: 900 }}>{b.inReview}</div><div style={{ fontSize: 11, color: "var(--mo-muted)" }}>in AI review</div></div>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--mo-muted)", borderTop: "1px solid var(--mo-border)", paddingTop: 8 }}>
+              Pending payments: <strong style={{ color: "var(--mo-ink)" }}>{b.currency} {b.pendingAmt.toLocaleString()}</strong>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {b.team.map(m => (
+                <div key={m.user.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12.5 }}>
+                  <span><strong>{m.user.name}</strong> <span style={{ color: "var(--mo-muted)" }}>· {m.user.title}</span></span>
+                  <span className={`mo-pill ${m.pendingTotal > 0 ? "mo-pill-warn" : "mo-pill-success"}`}>{m.pendingTotal} pending</span>
+                </div>
+              ))}
+            </div>
+          </div>
         ))}
+      </div>
+
+      {/* Team workload table */}
+      <div>
+        <div style={{ margin: "4px 0 10px", fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Team workload — all members</div>
+        <div className="mo-table-wrap">
+          <table className="mo-table">
+            <thead>
+              <tr><th>Member</th><th>Role</th><th>Countries</th><th>Open emails</th><th>Reviews waiting</th><th>Resolved</th><th>Actions today</th><th>Total actions</th><th style={{ width: 180 }}>Pending load</th></tr>
+            </thead>
+            <tbody>
+              {memberStats.map(m => (
+                <tr key={m.user.id}>
+                  <td><strong>{m.user.name}</strong>{!m.user.active && <span className="mo-pill mo-pill-danger" style={{ marginLeft: 6 }}>inactive</span>}</td>
+                  <td>{m.user.title}</td>
+                  <td>{m.regions.map(r => REGIONS[r]?.short).join(", ")}</td>
+                  <td>{m.open}</td>
+                  <td>{m.reviewLoad}</td>
+                  <td>{m.resolved}</td>
+                  <td>{m.actionsToday}</td>
+                  <td>{m.actionsTotal}</td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div className="mo-progress-track" style={{ flex: 1 }}>
+                        <div className="mo-progress-fill" style={{ width: `${(m.pendingTotal / maxPending) * 100}%`, background: m.pendingTotal === 0 ? "var(--mo-success)" : "linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))" }} />
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 900, minWidth: 16, textAlign: "right" }}>{m.pendingTotal}</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Needs attention */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div className="mo-card">
+          <div style={{ fontWeight: 900, fontSize: 13.5, marginBottom: 10 }}>Oldest unassigned emails</div>
+          {oldestUnassigned.length === 0 && <EmptyState text="Nothing unassigned — inbox fully owned." />}
+          <div style={{ display: "grid", gap: 8 }}>
+            {oldestUnassigned.map(e => (
+              <button key={e.id} className="mo-clickable" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "none", border: "none", padding: "6px 0", borderBottom: "1px solid var(--mo-border)" }} onClick={() => onNavigate("adhoc")}>
+                <span style={{ fontSize: 12.5, textAlign: "left" }}><strong>{e.subject}</strong><br /><span style={{ color: "var(--mo-muted)" }}>{e.from}</span></span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}><RegionDot region={e.region} /><span style={{ fontSize: 11.5, color: "var(--mo-muted)" }}>{e.receivedAt}</span></span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mo-card">
+          <div style={{ fontWeight: 900, fontSize: 13.5, marginBottom: 10 }}>Payments needing attention</div>
+          {atRiskPayments.length === 0 && <EmptyState text="No failed or disputed payments." />}
+          <div style={{ display: "grid", gap: 8 }}>
+            {atRiskPayments.map(p => (
+              <button key={p.id} className="mo-clickable" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "none", border: "none", padding: "6px 0", borderBottom: "1px solid var(--mo-border)" }} onClick={() => onNavigate("kb")}>
+                <span style={{ fontSize: 12.5, textAlign: "left" }}><strong>{p.customer}</strong><br /><span style={{ color: "var(--mo-muted)" }}>{p.currency} {p.amount.toLocaleString()} · updated {p.updatedAt}</span></span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}><RegionDot region={p.region} /><StatusPill status={p.status} /></span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
