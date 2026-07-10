@@ -477,7 +477,7 @@ export default function App() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--mo-ink)" }}>{currentUser.name}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--mo-ink)" }}>{currentUser.name}</div>
               <div style={{ fontSize: 12, color: "var(--mo-muted)", textTransform: "capitalize" }}>
                 {currentUser.role}{currentUser.region ? ` · ${REGIONS[currentUser.region].short}` : ""}
               </div>
@@ -914,7 +914,7 @@ function BauConsole({ bauState, currentUser, onCheck, onReset }) {
         <div key={group} style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: palette[group] }} />
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--mo-ink)", textTransform: "uppercase", letterSpacing: 0.5 }}>{group}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mo-ink)", textTransform: "uppercase", letterSpacing: 0.5 }}>{group}</span>
           </div>
           <div style={styles.grid3}>
             {BAU_PROCESSES.filter(p => p.group === group).map(p => {
@@ -981,7 +981,7 @@ function BauConsole({ bauState, currentUser, onCheck, onReset }) {
 function EmailQueue({ emails, currentUser, genLoading, onAssign, onGenerate, drafts }) {
   return (
     <div>
-      <p style={{ fontSize: 13, color: "var(--mo-muted)", margin: "14px 0" }}>
+      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
         {currentUser.role === "agent"
           ? `Showing enquiries for ${REGIONS[currentUser.region].name} only.`
           : "Showing all regions unless filtered above. Read access only — assignment is performed by the owning region's agent."}
@@ -997,7 +997,7 @@ function EmailQueue({ emails, currentUser, genLoading, onAssign, onGenerate, dra
                 <td><RegionDot region={e.region} /></td>
                 <td className="mo-mono">{e.from}</td>
                 <td>
-                  <div style={{ fontWeight: 600, color: "var(--mo-ink)" }}>{e.subject}</div>
+                  <div style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{e.subject}</div>
                   <div style={{ fontSize: 12, color: "var(--mo-muted)", maxWidth: 340 }}>{e.body}</div>
                 </td>
                 <td><span className="mo-pill mo-pill-neutral">{CATEGORIES[e.category]}</span></td>
@@ -1032,7 +1032,7 @@ function ReviewQueue({ drafts, emails, regionFilter, rejectingId, rejectNote, se
 
   return (
     <div>
-      <p style={{ fontSize: 13, color: "var(--mo-muted)", margin: "14px 0" }}>
+      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
         Every AI-drafted reply stops here before anything is considered "sent." Approval only marks the reply as sent (mock) — nothing in this
         prototype delivers real email. Marking a good reply as an example is how the team starts curating what the AI should learn from over time.
       </p>
@@ -1044,7 +1044,7 @@ function ReviewQueue({ drafts, emails, regionFilter, rejectingId, rejectNote, se
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <RegionDot region={d.email.region} />
-                  <span style={{ fontWeight: 600, fontSize: 14, color: "var(--mo-ink)" }}>{d.email.subject}</span>
+                  <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{d.email.subject}</span>
                 </div>
                 <div className="mo-mono" style={{ fontSize: 12, color: "var(--mo-muted)" }}>{d.email.from} · drafted {d.createdAt}</div>
               </div>
@@ -1088,7 +1088,7 @@ function ReviewQueue({ drafts, emails, regionFilter, rejectingId, rejectNote, se
 
       {decided.length > 0 && (
         <>
-          <div style={{ marginTop: 24, marginBottom: 10, fontSize: 12.5, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Recently decided</div>
+          <div style={{ marginTop: 24, marginBottom: 10, fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Recently decided</div>
           <div className="mo-table-wrap">
             <table className="mo-table">
               <thead><tr><th>Region</th><th>Subject</th><th>Outcome</th><th>Note</th><th>Example</th></tr></thead>
@@ -1121,7 +1121,7 @@ function PaymentStatus({ payments, currentUser, onChange }) {
   const canEdit = currentUser.role === "admin";
   return (
     <div>
-      <p style={{ fontSize: 13, color: "var(--mo-muted)", margin: "14px 0" }}>
+      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
         Mock workflow only — not connected to a real payment provider. Ordinary releases happen through the BAU checklist with its own two-person
         confirmation; this table is a direct admin override for demo purposes only.
       </p>
@@ -1132,7 +1132,7 @@ function PaymentStatus({ payments, currentUser, onChange }) {
             {payments.map(p => (
               <tr key={p.id}>
                 <td><RegionDot region={p.region} /></td>
-                <td style={{ fontWeight: 600, color: "var(--mo-ink)" }}>{p.customer}</td>
+                <td style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{p.customer}</td>
                 <td className="mo-mono">{p.amount.toLocaleString()} {p.currency}</td>
                 <td><StatusPill status={p.status} /></td>
                 <td className="mo-mono" style={{ fontSize: 12 }}>{p.updatedAt}</td>
@@ -1157,7 +1157,7 @@ function KnowledgeCards({ cards, currentUser, newCard, setNewCard, onCreate, onP
   return (
     <div>
       <div className="mo-card" style={{ marginBottom: 18, marginTop: 14 }}>
-        <div style={{ fontWeight: 600, marginBottom: 10, color: "var(--mo-ink)" }}>New draft card</div>
+        <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 10, color: "var(--mo-ink)" }}>New draft card</div>
         <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 8 }} />
         <textarea className="mo-textarea" rows={3} placeholder="Card content — what should an agent know?" value={newCard.body} onChange={e => setNewCard({ ...newCard, body: e.target.value })} style={{ marginBottom: 8 }} />
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1176,7 +1176,7 @@ function KnowledgeCards({ cards, currentUser, newCard, setNewCard, onCreate, onP
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   {c.region === "all" ? <Globe2 size={13} color="var(--mo-muted)" /> : <RegionDot region={c.region} />}
-                  <span style={{ fontWeight: 600, color: "var(--mo-ink)" }}>{c.title}</span>
+                  <span style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{c.title}</span>
                 </div>
                 <div style={{ fontSize: 13, color: "var(--mo-muted)", maxWidth: 520 }}>{c.body}</div>
                 <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>By {c.author} · updated {c.updatedAt}</div>
@@ -1210,7 +1210,7 @@ function PublishedKB({ cards }) {
           <div key={c.id} className="mo-card">
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
               {c.region === "all" ? <Globe2 size={13} color="var(--mo-muted)" /> : <RegionDot region={c.region} />}
-              <span style={{ fontWeight: 600, color: "var(--mo-ink)" }}>{c.title}</span>
+              <span style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{c.title}</span>
             </div>
             <div style={{ fontSize: 13.5, color: "var(--mo-ink)" }}>{c.body}</div>
           </div>
@@ -1227,7 +1227,7 @@ function Training() {
       <div className="mo-card" style={{ margin: "14px 0 16px", background: "var(--mo-locked-bg)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
           <Lock size={14} color="var(--mo-muted)" />
-          <span style={{ fontWeight: 600, color: "var(--mo-ink)" }}>Structured training is a placeholder in this prototype</span>
+          <span style={{ fontWeight: 800, color: "var(--mo-ink)" }}>Structured training is a placeholder in this prototype</span>
         </div>
         <p style={{ fontSize: 13, color: "var(--mo-muted)", margin: 0 }}>
           The goal is a single place a new team member can learn the SOPs without asking around — built from knowledge cards and real email history.
@@ -1238,7 +1238,7 @@ function Training() {
         {topics.map(t => (
           <div key={t} className="mo-lockedtile" style={{ cursor: "default" }}>
             <GraduationCap size={16} style={{ marginBottom: 8, color: "var(--mo-muted)" }} />
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--mo-ink)" }}>{t}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--mo-ink)" }}>{t}</div>
             <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 4 }}>Phase 2</div>
           </div>
         ))}
@@ -1250,7 +1250,7 @@ function Training() {
 function AccessControl({ users, onToggle }) {
   return (
     <div>
-      <p style={{ fontSize: 13, color: "var(--mo-muted)", margin: "14px 0" }}>
+      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
         Roles and permissions are fixed rules, not editable at runtime — this keeps access control predictable and auditable. You can only activate or deactivate accounts here.
       </p>
       <div className="mo-table-wrap" style={{ marginBottom: 24 }}>
@@ -1259,7 +1259,7 @@ function AccessControl({ users, onToggle }) {
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td style={{ fontWeight: 600, color: "var(--mo-ink)" }}>{u.name}</td>
+                <td style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{u.name}</td>
                 <td style={{ textTransform: "capitalize" }}>{u.role}</td>
                 <td>{u.region ? <RegionDot region={u.region} /> : <span style={{ color: "var(--mo-muted)", fontSize: 12.5 }}>All regions</span>}</td>
                 <td><span className={`mo-pill ${u.active ? "mo-pill-success" : "mo-pill-danger"}`}>{u.active ? "Active" : "Inactive"}</span></td>
@@ -1270,7 +1270,7 @@ function AccessControl({ users, onToggle }) {
         </table>
       </div>
 
-      <div style={{ fontSize: 12.5, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Permission matrix (reference — not editable)</div>
+      <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Permission matrix (reference — not editable)</div>
       <div className="mo-table-wrap">
         <table className="mo-table">
           <thead><tr><th>Module</th><th>Agent</th><th>Reviewer</th><th>Admin</th></tr></thead>
@@ -1284,7 +1284,7 @@ function AccessControl({ users, onToggle }) {
               ["Access control", "No access", "No access", "Full access"],
               ["Audit log", "No access", "View only", "View only"],
             ].map(row => (
-              <tr key={row[0]}>{row.map((cell, i) => <td key={i} style={i === 0 ? { fontWeight: 600, color: "var(--mo-ink)" } : { fontSize: 12.5, color: "var(--mo-muted)" }}>{cell}</td>)}</tr>
+              <tr key={row[0]}>{row.map((cell, i) => <td key={i} style={i === 0 ? { fontWeight: 800, color: "var(--mo-ink)" } : { fontSize: 12.5, color: "var(--mo-muted)" }}>{cell}</td>)}</tr>
             ))}
           </tbody>
         </table>
@@ -1323,7 +1323,7 @@ function AuditLogView({ entries, users, filters, setFilters }) {
             {filtered.map(e => (
               <tr key={e.id}>
                 <td className="mo-mono" style={{ fontSize: 12 }}>{e.at}</td>
-                <td style={{ fontWeight: 600, color: "var(--mo-ink)" }}>{e.actor}</td>
+                <td style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{e.actor}</td>
                 <td><span className="mo-pill mo-pill-neutral">{e.action}</span></td>
                 <td style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>{e.detail}</td>
                 <td className="mo-mono" style={{ fontSize: 12 }}>{e.region}</td>
