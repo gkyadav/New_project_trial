@@ -1217,17 +1217,52 @@ function PaymentStatus({ payments, currentUser, onChange }) {
 const KB_SECTIONS = { uae: [{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }] };
 const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt" };
 
+const KB_TINT_MAP = {
+  "uae/fulfillment": ["#2563eb", "#7c3aed"],
+  "uae/logistics": ["#0891b2", "#18b56f"],
+  "ksa/general": ["#f59e0b", "#f97316"],
+  "egypt/general": ["#ec4899", "#7c3aed"],
+};
+const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#2563eb", "#7c3aed"];
+
+function KbPlayingCard({ card, users, pendingCount, onOpen }) {
+  const [c1, c2] = kbTint(card);
+  const owner = users.find(u => u.id === card.owner);
+  const ownerName = owner ? owner.name : card.author;
+  const initials = (ownerName || "?").replace(/[^A-Za-z ]/g, "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const pip = card.section === "fulfillment" ? "FF" : card.section === "logistics" ? "LG" : (COUNTRY_LABEL[card.country] || "").toUpperCase();
+  return (
+    <button className="kb-pcard" style={{ "--kb-c1": c1, "--kb-c2": c2 }} onClick={onOpen}>
+      <span className="kb-pip kb-pip-top">{pip}</span>
+      <span className="kb-pip kb-pip-bottom">{pip}</span>
+      <span className="kb-pcard-badges">
+        <StatusPill status={card.status} />
+        {pendingCount > 0 && <span className="mo-pill mo-pill-warn">{pendingCount} pending</span>}
+      </span>
+      <span className="kb-medallion"><BookOpen size={21} /></span>
+      <span className="kb-pcard-title">{card.title}</span>
+      <span className="kb-pcard-body">{card.body}</span>
+      <span className="kb-pcard-foot">
+        <span className="kb-avatar">{initials}</span>
+        <span className="kb-owner-name">{ownerName}</span>
+      </span>
+    </button>
+  );
+}
+
 function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onPropose, onMerge, onReject }) {
   const sections = KB_SECTIONS[country];
   const [section, setSection] = useState(sections ? sections[0].id : "general");
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [openCardId, setOpenCardId] = useState(null);
   const isManager = currentUser.role === "admin";
 
   const list = cards
     .filter(c => c.country === country && (!sections || c.section === section))
     .filter(c => (c.title + c.body).toLowerCase().includes(q.toLowerCase()));
   const pendingHere = revisions.filter(r => r.status === "pending" && list.some(c => c.id === r.cardId)).length;
+  const openCard = cards.find(c => c.id === openCardId);
 
   return (
     <div>
@@ -1239,32 +1274,52 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "14px 0 16px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "14px 0 0", flexWrap: "wrap" }}>
         <div style={{ position: "relative", width: 320 }}>
           <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "var(--mo-muted)" }} />
           <input className="mo-input" style={{ paddingLeft: 30 }} placeholder={`Search ${COUNTRY_LABEL[country]} knowledge cards`} value={q} onChange={e => setQ(e.target.value)} />
         </div>
-        <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => setShowForm(f => !f)}><PlusCircle size={13} style={{ marginRight: 6 }} />{showForm ? "Close form" : "New card"}</button>
         {pendingHere > 0 && <span className="mo-pill mo-pill-warn">{pendingHere} change{pendingHere > 1 ? "s" : ""} awaiting Gaurav</span>}
       </div>
 
+      <div className="kb-grid">
+        <button className="kb-pcard kb-addcard" onClick={() => setShowForm(true)}>
+          <span className="kb-add-plus"><PlusCircle size={30} /></span>
+          <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>Add a card</span>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mo-muted)" }}>Share what you know — the whole team sees it</span>
+        </button>
+        {list.map(c => (
+          <KbPlayingCard key={c.id} card={c} users={users}
+            pendingCount={revisions.filter(r => r.cardId === c.id && r.status === "pending").length}
+            onOpen={() => setOpenCardId(c.id)} />
+        ))}
+      </div>
+
       {showForm && (
-        <div className="mo-card" style={{ marginBottom: 16 }}>
-          <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4, color: "var(--mo-ink)" }}>New draft card — {COUNTRY_LABEL[country]}{sections ? ` / ${sections.find(s => s.id === section).label}` : ""}</div>
-          <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 10 }}>You ({currentUser.name}) will own this card. It stays a draft until Gaurav publishes it.</div>
-          <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 8 }} />
-          <textarea className="mo-textarea" rows={3} placeholder="Card content — what should the team know?" value={newCard.body} onChange={e => setNewCard({ ...newCard, body: e.target.value })} style={{ marginBottom: 8 }} />
-          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onCreate(country, sections ? section : "general")}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
+        <div className="kb-modal-overlay" onClick={() => setShowForm(false)}>
+          <div className="kb-modal" onClick={e => e.stopPropagation()}>
+            <div className="mo-card">
+              <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4, color: "var(--mo-ink)" }}>New draft card — {COUNTRY_LABEL[country]}{sections ? ` / ${sections.find(s => s.id === section).label}` : ""}</div>
+              <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 10 }}>You ({currentUser.name}) will own this card. It stays a draft until Gaurav publishes it.</div>
+              <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 8 }} />
+              <textarea className="mo-textarea" rows={4} placeholder="Card content — what should the team know?" value={newCard.body} onChange={e => setNewCard({ ...newCard, body: e.target.value })} style={{ marginBottom: 8 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onCreate(country, sections ? section : "general"); setShowForm(false); }}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
+                <button className="mo-btn mo-btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {list.length === 0 && <EmptyState text="No knowledge cards here yet." />}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {list.map(c => (
-          <KbCard key={c.id} card={c} revisions={revisions.filter(r => r.cardId === c.id)} users={users}
-            isManager={isManager} onPublish={onPublish} onPropose={onPropose} onMerge={onMerge} onReject={onReject} />
-        ))}
-      </div>
+      {openCard && (
+        <div className="kb-modal-overlay" onClick={() => setOpenCardId(null)}>
+          <div className="kb-modal" onClick={e => e.stopPropagation()}>
+            <KbCard card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
+              isManager={isManager} onPublish={onPublish} onPropose={onPropose} onMerge={onMerge} onReject={onReject} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1656,6 +1711,29 @@ body {
 .mo-stage-done { background: linear-gradient(135deg, var(--mo-success), #22c55e); border-color: transparent; color: #fff; }
 .mo-paygrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 16px; flex: 1; margin-top: 16px; }
 .mo-paycard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; min-height: 180px; border: 1px solid rgba(255,255,255,0.74); }
+.kb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; margin-top: 18px; }
+.kb-pcard { position: relative; aspect-ratio: 5 / 7; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 40px 16px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.78); background: linear-gradient(160deg, rgba(255,255,255,0.96), rgba(238,245,255,0.88)); box-shadow: var(--mo-shadow); backdrop-filter: blur(14px); cursor: pointer; font-family: var(--mo-body); overflow: hidden; transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.kb-pcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 66px; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); opacity: 0.15; pointer-events: none; }
+.kb-pcard::after { content: ""; position: absolute; inset: 0; border-radius: 20px; border: 2px solid transparent; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)) border-box; -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 0.18s ease; pointer-events: none; }
+.kb-pcard:hover { transform: translateY(-5px) rotate(-0.6deg); box-shadow: 0 26px 70px rgba(35,56,86,0.22), 0 0 34px rgba(79,70,229,0.28); }
+.kb-pcard:hover::after { opacity: 1; }
+.kb-pip { position: absolute; font-size: 11px; font-weight: 900; letter-spacing: 0.08em; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kb-pip-top { top: 10px; left: 12px; }
+.kb-pip-bottom { bottom: 10px; right: 12px; transform: rotate(180deg); }
+.kb-medallion { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; box-shadow: 0 12px 26px rgba(79,70,229,0.35); flex-shrink: 0; }
+.kb-pcard-title { font-weight: 900; font-size: 14px; line-height: 1.25; color: var(--mo-ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-pcard-body { font-size: 11.5px; line-height: 1.45; color: var(--mo-muted); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-pcard-foot { margin-top: auto; display: flex; align-items: center; gap: 7px; max-width: 100%; }
+.kb-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; font-size: 10px; font-weight: 900; flex-shrink: 0; }
+.kb-owner-name { font-size: 11.5px; font-weight: 800; color: var(--mo-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-pcard-badges { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; }
+.kb-addcard { border: 2px dashed rgba(79,70,229,0.35); background: rgba(255,255,255,0.55); justify-content: center; }
+.kb-addcard::before, .kb-addcard::after { display: none; }
+.kb-addcard:hover { transform: translateY(-5px); border-color: var(--mo-accent); box-shadow: 0 26px 70px rgba(35,56,86,0.2); }
+.kb-add-plus { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; box-shadow: 0 14px 30px rgba(79,70,229,0.35); }
+.kb-modal-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(7,18,41,0.45); backdrop-filter: blur(6px); padding: 24px; overflow: auto; }
+.kb-modal { width: min(720px, 100%); max-height: 88vh; overflow: auto; border-radius: 22px; }
+.kb-modal > .mo-card { box-shadow: 0 40px 120px rgba(0,0,0,0.4); }
 @media (max-width: 1500px) { .mo-paygrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 1200px) { .mo-paygrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 860px) { .mo-paygrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
