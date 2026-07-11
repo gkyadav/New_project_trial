@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase, rowToUser, rowToEmail, rowToDraft, rowToPayment, rowToKbCard, rowToAudit } from "./supabase";
+import { supabase, rowToUser, rowToEmail, rowToDraft, rowToPayment, rowToKbCard, rowToKbRevision, rowToAudit } from "./supabase";
 import {
   Inbox, Bot, ShieldCheck, BookOpen, Lock, ClipboardList, LogOut,
   CheckCircle2, XCircle, Pencil, CreditCard, GraduationCap,
@@ -152,7 +152,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("dashboard");
   const [adhocTab, setAdhocTab] = useState("queue");
-  const [kbTab, setKbTab] = useState("cards");
+  const [kbTab, setKbTab] = useState("uae");
   const [adminTab, setAdminTab] = useState("access");
   const [regionFilter, setRegionFilter] = useState("all");
   const [toast, setToast] = useState(null);
@@ -162,6 +162,7 @@ export default function App() {
   const [drafts, setDrafts] = useState([]);
   const [payments, setPayments] = useState([]);
   const [kbCards, setKbCards] = useState([]);
+  const [kbRevisions, setKbRevisions] = useState([]);
   const [bauState, setBauState] = useState(() => {
     const init = {};
     BAU_PROCESSES.forEach(p => { init[p.id] = {}; });
@@ -169,7 +170,7 @@ export default function App() {
   });
   const [auditLog, setAuditLog] = useState([]);
   const [dataReady, setDataReady] = useState(false);
-  const [newCard, setNewCard] = useState({ title: "", body: "", region: "all" });
+  const [newCard, setNewCard] = useState({ title: "", body: "" });
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
   const [editingDraftId, setEditingDraftId] = useState(null);
@@ -202,23 +203,25 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     async function loadAll() {
-      const [u, e, d, p, k, b, a] = await Promise.all([
+      const [u, e, d, p, k, kr, b, a] = await Promise.all([
         supabase.from("users").select("*").order("id"),
         supabase.from("emails").select("*").order("received_at", { ascending: false }),
         supabase.from("drafts").select("*").order("created_at"),
         supabase.from("payments").select("*").order("id"),
         supabase.from("kb_cards").select("*").order("updated_at", { ascending: false }),
+        supabase.from("kb_revisions").select("*").order("created_at", { ascending: false }),
         supabase.from("bau_checks").select("*"),
         supabase.from("audit_log").select("*").order("at", { ascending: false }),
       ]);
       if (cancelled) return;
-      const failed = [u, e, d, p, k, b, a].find(r => r.error);
+      const failed = [u, e, d, p, k, kr, b, a].find(r => r.error);
       if (failed) { pushToast("Could not load data: " + failed.error.message); return; }
       setUsers(u.data.map(rowToUser));
       setEmails(e.data.map(rowToEmail));
       setDrafts(d.data.map(rowToDraft));
       setPayments(p.data.map(rowToPayment));
       setKbCards(k.data.map(rowToKbCard));
+      setKbRevisions(kr.data.map(rowToKbRevision));
       setBauState(bauStateFromRows(b.data));
       setAuditLog(a.data.map(rowToAudit));
       setDataReady(true);
@@ -249,6 +252,7 @@ export default function App() {
           case "drafts": upsertBy(setDrafts, rowToDraft, payload); break;
           case "payments": upsertBy(setPayments, rowToPayment, payload); break;
           case "kb_cards": upsertBy(setKbCards, rowToKbCard, payload, { prepend: true }); break;
+          case "kb_revisions": upsertBy(setKbRevisions, rowToKbRevision, payload, { prepend: true }); break;
           case "audit_log": upsertBy(setAuditLog, rowToAudit, payload, { prepend: true }); break;
           case "bau_checks": {
             if (payload.eventType === "DELETE") {
@@ -386,22 +390,61 @@ export default function App() {
   }
 
   /* ---- knowledge base actions ---- */
-  function createCard() {
+  function createCard(country, section) {
     if (!newCard.title.trim() || !newCard.body.trim()) { pushToast("Title and body are required"); return; }
-    const card = { id: "k" + Date.now(), title: newCard.title, body: newCard.body, region: newCard.region, status: "draft", author: currentUser.name, updatedAt: new Date().toISOString().slice(0, 10) };
+    const card = {
+      id: "k" + Date.now(), title: newCard.title, body: newCard.body,
+      region: country, country, section, owner: currentUser.id,
+      status: "draft", author: currentUser.name, updatedAt: new Date().toISOString().slice(0, 10),
+    };
     setKbCards(prev => prev.some(c => c.id === card.id) ? prev : [card, ...prev]);
-    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, region: card.region, status: card.status, author: card.author, updated_at: card.updatedAt }));
-    addAudit("Create knowledge card", `Draft created: "${card.title}"`, card.region);
-    setNewCard({ title: "", body: "", region: "all" });
-    pushToast("Draft card saved");
+    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, region: country, country, section, owner: card.owner, status: card.status, author: card.author, updated_at: card.updatedAt }));
+    addAudit("Create knowledge card", `Draft created: "${card.title}" (${country.toUpperCase()} / ${section})`, country);
+    setNewCard({ title: "", body: "" });
+    pushToast(currentUser.role === "admin" ? "Draft card saved" : "Draft card saved — pending Gaurav's vetting");
   }
 
   function publishCard(card) {
     const updatedAt = new Date().toISOString().slice(0, 10);
     setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, status: "published", updatedAt } : c));
     dbWrite(supabase.from("kb_cards").update({ status: "published", updated_at: updatedAt }).eq("id", card.id));
-    addAudit("Publish knowledge card", `Published: "${card.title}"`, card.region);
+    addAudit("Publish knowledge card", `Published: "${card.title}"`, card.country);
     pushToast("Card published to knowledge base");
+  }
+
+  /* ---- knowledge base: git-style revisions ---- */
+  function proposeCardEdit(card, title, body) {
+    if (!title.trim() || !body.trim()) { pushToast("Title and body are required"); return; }
+    if (title === card.title && body === card.body) { pushToast("No changes to propose"); return; }
+    const rev = {
+      id: "r" + Date.now(), cardId: card.id, title, body,
+      authorId: currentUser.id, authorName: currentUser.name, note: "",
+      status: "pending", createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+      decidedAt: null, decidedBy: null,
+    };
+    setKbRevisions(prev => prev.some(r => r.id === rev.id) ? prev : [rev, ...prev]);
+    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, author_id: rev.authorId, author_name: rev.authorName, note: "", status: "pending", created_at: rev.createdAt }));
+    addAudit("Propose card edit", `Edit proposed for "${card.title}"`, card.country);
+    pushToast(currentUser.role === "admin" ? "Revision created — merge it to apply" : "Edit submitted — awaiting Gaurav's merge");
+  }
+
+  function mergeRevision(rev) {
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    const decidedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
+    setKbCards(prev => prev.map(c => c.id === rev.cardId ? { ...c, title: rev.title, body: rev.body, updatedAt } : c));
+    setKbRevisions(prev => prev.map(r => r.id === rev.id ? { ...r, status: "merged", decidedAt, decidedBy: currentUser.name } : r));
+    dbWrite(supabase.from("kb_cards").update({ title: rev.title, body: rev.body, updated_at: updatedAt }).eq("id", rev.cardId));
+    dbWrite(supabase.from("kb_revisions").update({ status: "merged", decided_at: decidedAt, decided_by: currentUser.name }).eq("id", rev.id));
+    addAudit("Merge card revision", `Merged ${rev.authorName}'s edit into "${rev.title}"`, "-");
+    pushToast(`Merged ${rev.authorName}'s revision`);
+  }
+
+  function rejectRevision(rev) {
+    const decidedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
+    setKbRevisions(prev => prev.map(r => r.id === rev.id ? { ...r, status: "rejected", decidedAt, decidedBy: currentUser.name } : r));
+    dbWrite(supabase.from("kb_revisions").update({ status: "rejected", decided_at: decidedAt, decided_by: currentUser.name }).eq("id", rev.id));
+    addAudit("Reject card revision", `Rejected ${rev.authorName}'s edit to "${rev.title}"`, "-");
+    pushToast(`Rejected ${rev.authorName}'s revision`);
   }
 
   /* ---- access control actions ---- */
@@ -412,7 +455,7 @@ export default function App() {
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onLogin={login} defaultUser={users.find(u => u.id === "gaurav")} ready={dataReady} />;
+  if (!currentUser) return <LoginScreen onLogin={login} users={users} ready={dataReady} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedEmails = currentUser.role === "agent"
@@ -496,7 +539,7 @@ export default function App() {
           {view === "bau" && (
             <PaymentsHub
               onOpenPaymentStatus={() => { setView("kb"); setKbTab("payments"); }}
-              onOpenKb={() => { setView("kb"); setKbTab("published"); }}
+              onOpenKb={() => { setView("kb"); setKbTab("uae"); }}
               onLocked={name => pushToast(`"${name}" is coming next — we'll build this out as we proceed`)}
             />
           )}
@@ -526,10 +569,15 @@ export default function App() {
 
           {view === "kb" && (
             <div>
-              <SubTabs tabs={[{ id: "cards", label: "Knowledge cards" }, { id: "published", label: "Published KB" }, { id: "payments", label: "Payment status" }]} active={kbTab} onChange={setKbTab} />
-              {kbTab === "cards" && <KnowledgeCards cards={kbCards} currentUser={currentUser} newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} />}
-              {kbTab === "published" && <PublishedKB cards={kbCards} />}
-              {kbTab === "payments" && <PaymentStatus payments={scopedPayments} currentUser={currentUser} onChange={changePaymentStatus} />}
+              <SubTabs
+                tabs={[{ id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "payments", label: "Payment status" }]}
+                active={kbTab} onChange={setKbTab}
+              />
+              {kbTab === "payments"
+                ? <PaymentStatus payments={scopedPayments} currentUser={currentUser} onChange={changePaymentStatus} />
+                : <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
+                    newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard}
+                    onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision} />}
             </div>
           )}
 
@@ -564,20 +612,23 @@ const LOGIN_FEATURES = [
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
-function LoginScreen({ onLogin, defaultUser, ready }) {
+function LoginScreen({ onLogin, users, ready }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [memberId, setMemberId] = useState("gaurav");
   const [error, setError] = useState("");
+  const activeUsers = users.filter(u => u.active);
 
   function submit(e) {
     e.preventDefault();
     if (username === "admin123" && password === "admin123") {
-      if (!ready || !defaultUser) {
+      const member = users.find(u => u.id === memberId);
+      if (!ready || !member) {
         setError("Connecting to the database — try again in a moment.");
         return;
       }
       setError("");
-      onLogin(defaultUser);
+      onLogin(member);
     } else {
       setError("Incorrect username or password.");
     }
@@ -651,6 +702,17 @@ function LoginScreen({ onLogin, defaultUser, ready }) {
             <div className="input-shell">
               <span>PW</span>
               <input id="login-pass" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="Enter your password" required />
+            </div>
+
+            <label htmlFor="login-member">Sign in as</label>
+            <div className="input-shell">
+              <span>ME</span>
+              <select id="login-member" value={memberId} onChange={e => setMemberId(e.target.value)}
+                style={{ flex: 1, minHeight: 44, border: 0, background: "transparent", outline: "none", font: "inherit", fontWeight: 700, color: "var(--mo-ink)", paddingRight: 14 }}>
+                {(activeUsers.length ? activeUsers : [{ id: "gaurav", name: "Gaurav", title: "Manager" }]).map(u => (
+                  <option key={u.id} value={u.id}>{u.name}{u.title ? ` — ${u.title}` : ""}</option>
+                ))}
+              </select>
             </div>
             <a className="forgot-link" href="#" onClick={e => e.preventDefault()}>Forgot password?</a>
 
@@ -1152,70 +1214,143 @@ function PaymentStatus({ payments, currentUser, onChange }) {
   );
 }
 
-function KnowledgeCards({ cards, currentUser, newCard, setNewCard, onCreate, onPublish }) {
-  const canPublish = currentUser.role === "admin";
+const KB_SECTIONS = { uae: [{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }] };
+const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt" };
+
+function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onPropose, onMerge, onReject }) {
+  const sections = KB_SECTIONS[country];
+  const [section, setSection] = useState(sections ? sections[0].id : "general");
+  const [q, setQ] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const isManager = currentUser.role === "admin";
+
+  const list = cards
+    .filter(c => c.country === country && (!sections || c.section === section))
+    .filter(c => (c.title + c.body).toLowerCase().includes(q.toLowerCase()));
+  const pendingHere = revisions.filter(r => r.status === "pending" && list.some(c => c.id === r.cardId)).length;
+
   return (
     <div>
-      <div className="mo-card" style={{ marginBottom: 18, marginTop: 14 }}>
-        <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 10, color: "var(--mo-ink)" }}>New draft card</div>
-        <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 8 }} />
-        <textarea className="mo-textarea" rows={3} placeholder="Card content — what should an agent know?" value={newCard.body} onChange={e => setNewCard({ ...newCard, body: e.target.value })} style={{ marginBottom: 8 }} />
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select className="mo-select" value={newCard.region} onChange={e => setNewCard({ ...newCard, region: e.target.value })}>
-            <option value="all">All regions</option>
-            {Object.values(REGIONS).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </select>
-          <button className="mo-btn mo-btn-primary mo-btn-sm" onClick={onCreate}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
+      {sections && (
+        <div style={{ display: "flex", gap: 8, margin: "14px 0 0" }}>
+          {sections.map(s => (
+            <button key={s.id} className={`mo-btn mo-btn-sm ${section === s.id ? "mo-btn-primary" : ""}`} onClick={() => setSection(s.id)}>{s.label}</button>
+          ))}
         </div>
+      )}
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "14px 0 16px", flexWrap: "wrap" }}>
+        <div style={{ position: "relative", width: 320 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "var(--mo-muted)" }} />
+          <input className="mo-input" style={{ paddingLeft: 30 }} placeholder={`Search ${COUNTRY_LABEL[country]} knowledge cards`} value={q} onChange={e => setQ(e.target.value)} />
+        </div>
+        <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => setShowForm(f => !f)}><PlusCircle size={13} style={{ marginRight: 6 }} />{showForm ? "Close form" : "New card"}</button>
+        {pendingHere > 0 && <span className="mo-pill mo-pill-warn">{pendingHere} change{pendingHere > 1 ? "s" : ""} awaiting Gaurav</span>}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {cards.map(c => (
-          <div key={c.id} className="mo-card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  {c.region === "all" ? <Globe2 size={13} color="var(--mo-muted)" /> : <RegionDot region={c.region} />}
-                  <span style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{c.title}</span>
-                </div>
-                <div style={{ fontSize: 13, color: "var(--mo-muted)", maxWidth: 520 }}>{c.body}</div>
-                <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>By {c.author} · updated {c.updatedAt}</div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-                <StatusPill status={c.status} />
-                {c.status === "draft" && canPublish && (
-                  <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(c)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
-                )}
-              </div>
-            </div>
-          </div>
+      {showForm && (
+        <div className="mo-card" style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4, color: "var(--mo-ink)" }}>New draft card — {COUNTRY_LABEL[country]}{sections ? ` / ${sections.find(s => s.id === section).label}` : ""}</div>
+          <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 10 }}>You ({currentUser.name}) will own this card. It stays a draft until Gaurav publishes it.</div>
+          <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 8 }} />
+          <textarea className="mo-textarea" rows={3} placeholder="Card content — what should the team know?" value={newCard.body} onChange={e => setNewCard({ ...newCard, body: e.target.value })} style={{ marginBottom: 8 }} />
+          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onCreate(country, sections ? section : "general")}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
+        </div>
+      )}
+
+      {list.length === 0 && <EmptyState text="No knowledge cards here yet." />}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {list.map(c => (
+          <KbCard key={c.id} card={c} revisions={revisions.filter(r => r.cardId === c.id)} users={users}
+            isManager={isManager} onPublish={onPublish} onPropose={onPropose} onMerge={onMerge} onReject={onReject} />
         ))}
       </div>
     </div>
   );
 }
 
-function PublishedKB({ cards }) {
-  const [q, setQ] = useState("");
-  const published = cards.filter(c => c.status === "published" && (c.title + c.body).toLowerCase().includes(q.toLowerCase()));
+function KbCard({ card, revisions, users, isManager, onPublish, onPropose, onMerge, onReject }) {
+  const [editing, setEditing] = useState(false);
+  const [eTitle, setETitle] = useState(card.title);
+  const [eBody, setEBody] = useState(card.body);
+  const [showHistory, setShowHistory] = useState(false);
+  const owner = users.find(u => u.id === card.owner);
+  const pending = revisions.filter(r => r.status === "pending");
+  const history = revisions.filter(r => r.status !== "pending");
+
+  function startEdit() { setETitle(card.title); setEBody(card.body); setEditing(true); }
+
   return (
-    <div>
-      <div style={{ position: "relative", margin: "14px 0 16px", maxWidth: 340 }}>
-        <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "var(--mo-muted)" }} />
-        <input className="mo-input" style={{ paddingLeft: 30 }} placeholder="Search the knowledge base" value={q} onChange={e => setQ(e.target.value)} />
-      </div>
-      {published.length === 0 && <EmptyState text="No published cards match your search." />}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {published.map(c => (
-          <div key={c.id} className="mo-card">
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              {c.region === "all" ? <Globe2 size={13} color="var(--mo-muted)" /> : <RegionDot region={c.region} />}
-              <span style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{c.title}</span>
-            </div>
-            <div style={{ fontSize: 13.5, color: "var(--mo-ink)" }}>{c.body}</div>
+    <div className="mo-card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+            <RegionDot region={card.country} />
+            <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{card.title}</span>
+            <StatusPill status={card.status} />
+            {pending.length > 0 && <span className="mo-pill mo-pill-warn">{pending.length} pending change{pending.length > 1 ? "s" : ""}</span>}
           </div>
-        ))}
+          <div style={{ fontSize: 13, color: "var(--mo-ink)", maxWidth: 640 }}>{card.body}</div>
+          <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>
+            Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
+          {card.status === "draft" && isManager && (
+            <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(card)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
+          )}
+          <button className="mo-btn mo-btn-sm" onClick={() => (editing ? setEditing(false) : startEdit())}><Pencil size={12} style={{ marginRight: 6 }} />{editing ? "Cancel edit" : "Propose edit"}</button>
+          {history.length > 0 && (
+            <button className="mo-btn mo-btn-sm" onClick={() => setShowHistory(h => !h)}><ListChecks size={12} style={{ marginRight: 6 }} />History ({history.length})</button>
+          )}
+        </div>
       </div>
+
+      {editing && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)" }}>
+          <input className="mo-input" value={eTitle} onChange={e => setETitle(e.target.value)} style={{ marginBottom: 8 }} />
+          <textarea className="mo-textarea" rows={4} value={eBody} onChange={e => setEBody(e.target.value)} style={{ marginBottom: 8 }} />
+          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onPropose(card, eTitle, eBody); setEditing(false); }}>
+            <Send size={12} style={{ marginRight: 6 }} />Submit for merge
+          </button>
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)", display: "grid", gap: 10 }}>
+          {pending.map(r => (
+            <div key={r.id} style={{ background: "var(--mo-surface-alt)", borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5 }}><strong>{r.authorName}</strong> proposed an edit · {r.createdAt}</span>
+                {isManager ? (
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onMerge(r)}><CheckCircle2 size={12} style={{ marginRight: 4 }} />Merge</button>
+                    <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => onReject(r)}><XCircle size={12} style={{ marginRight: 4 }} />Reject</button>
+                  </span>
+                ) : (
+                  <span className="mo-pill mo-pill-warn">Awaiting Gaurav</span>
+                )}
+              </div>
+              {r.title !== card.title && <div style={{ fontSize: 12.5, marginBottom: 4 }}><span style={{ color: "var(--mo-muted)" }}>Title → </span><strong>{r.title}</strong></div>}
+              <div style={{ fontSize: 12.5, color: "var(--mo-ink)" }}>{r.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showHistory && history.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)", display: "grid", gap: 6 }}>
+          {history.map(r => (
+            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12 }}>
+              <span><strong>{r.authorName}</strong> · {r.createdAt}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <StatusPill status={r.status === "merged" ? "approved" : "failed"} label={r.status === "merged" ? "Merged" : "Rejected"} />
+                <span style={{ color: "var(--mo-muted)" }}>by {r.decidedBy} · {r.decidedAt}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
