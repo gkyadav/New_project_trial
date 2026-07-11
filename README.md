@@ -5,9 +5,13 @@ AI review queue, BAU checklists (Fulfillment/Logistics), knowledge base,
 access control, and audit log.
 
 Backed by Supabase (project `ehljzeocpaxjvdjidext`, tables: users, emails,
-drafts, payments, kb_cards, bau_checks, audit_log). All actions write through
-to Postgres and sync live to other users via Supabase Realtime. RLS is open
-to the publishable key — prototype trust model, same as the shared demo login.
+drafts, payments, kb_cards, kb_revisions, bau_checks, audit_log). All actions
+write through to Postgres and sync live to other users via Supabase Realtime.
+
+Authentication is Supabase Auth: team members sign in with their noon email
+IDs; passwords are stored bcrypt-hashed in Supabase's auth store, never in
+this repo. Row-level security only grants data access to signed-in accounts
+whose email is an active row in the users table.
 
 ## Run locally
 npm install
@@ -19,5 +23,5 @@ npx vercel deploy
 npx vercel deploy --prod
 
 ## Login
-Username: admin123
-Password: admin123
+Sign in with your noon email ID. Accounts are provisioned in Supabase Auth
+by the manager; there are no demo credentials.

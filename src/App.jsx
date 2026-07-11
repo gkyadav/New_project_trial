@@ -149,6 +149,8 @@ const STATUS_LABEL = {
 /* ---------------------------------------------------------------------- */
 
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("dashboard");
   const [adhocTab, setAdhocTab] = useState("queue");
@@ -199,8 +201,16 @@ export default function App() {
     return init;
   }
 
-  /* Initial load: hydrate all state from Supabase. */
+  /* Auth session: restore on load, track changes. */
   useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthChecked(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  /* Initial load: hydrate all state from Supabase once signed in. */
+  useEffect(() => {
+    if (!session) { setDataReady(false); setCurrentUser(null); return; }
     let cancelled = false;
     async function loadAll() {
       const [u, e, d, p, k, kr, b, a] = await Promise.all([
@@ -228,10 +238,27 @@ export default function App() {
     }
     loadAll();
     return () => { cancelled = true; };
-  }, []);
+  }, [session?.user?.email]);
+
+  /* Resolve the signed-in auth account to a team member row. */
+  useEffect(() => {
+    if (!session || !dataReady || users.length === 0) return;
+    const me = users.find(u => u.id === session.user.email);
+    if (!me || !me.active) {
+      supabase.auth.signOut();
+      pushToast("This account is not authorized for the Ops Console.");
+      return;
+    }
+    setCurrentUser(prev => (prev?.id === me.id ? prev : me));
+    if (!currentUser) {
+      setView("dashboard");
+      setRegionFilter(me.role === "agent" && me.region ? me.region : "all");
+    }
+  }, [session, dataReady, users]);
 
   /* Realtime: apply changes made by other users as they happen. */
   useEffect(() => {
+    if (!session) return;
     function upsertBy(setList, mapRow, payload, { prepend = false } = {}) {
       if (payload.eventType === "DELETE") {
         const oldId = payload.old?.id;
@@ -277,7 +304,7 @@ export default function App() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [session?.user?.email]);
 
   function addAudit(action, detail, region) {
     const entry = {
@@ -289,13 +316,15 @@ export default function App() {
     dbWrite(supabase.from("audit_log").insert({ id: entry.id, at: entry.at, actor: entry.actor, action: entry.action, detail: entry.detail, region: entry.region }));
   }
 
-  function login(user) {
-    setCurrentUser(user);
-    setView("dashboard");
-    setRegionFilter(user.role === "agent" ? user.region : "all");
+  async function login(email, password) {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    return error ? "Sign-in failed: incorrect noon ID or password." : null;
   }
 
-  function logout() { setCurrentUser(null); }
+  function logout() {
+    supabase.auth.signOut();
+    setCurrentUser(null);
+  }
 
   /* ---- adhoc: email queue actions ---- */
   function assignEmail(email) {
@@ -455,7 +484,7 @@ export default function App() {
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onLogin={login} users={users} ready={dataReady} />;
+  if (!currentUser) return <LoginScreen onLogin={login} restoring={!authChecked || (!!session && !dataReady)} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedEmails = currentUser.role === "agent"
@@ -612,26 +641,20 @@ const LOGIN_FEATURES = [
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
-function LoginScreen({ onLogin, users, ready }) {
+function LoginScreen({ onLogin, restoring }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [memberId, setMemberId] = useState("gaurav");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const activeUsers = users.filter(u => u.active);
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
-    if (username === "admin123" && password === "admin123") {
-      const member = users.find(u => u.id === memberId);
-      if (!ready || !member) {
-        setError("Connecting to the database — try again in a moment.");
-        return;
-      }
-      setError("");
-      onLogin(member);
-    } else {
-      setError("Incorrect username or password.");
-    }
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    const err = await onLogin(username, password);
+    if (err) setError(err);
+    setBusy(false);
   }
 
   return (
@@ -690,12 +713,13 @@ function LoginScreen({ onLogin, users, ready }) {
           <p className="intro">Login to continue to your operations workspace.</p>
 
           {error && <div className="portal-alert">{error}</div>}
+          {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Signing you in…</div>}
 
           <form onSubmit={submit} className="portal-form">
-            <label htmlFor="login-user">Username</label>
+            <label htmlFor="login-user">noon ID</label>
             <div className="input-shell">
               <span>ID</span>
-              <input id="login-user" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="Enter your username" required />
+              <input id="login-user" type="email" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="yourname@noon.com" required />
             </div>
 
             <label htmlFor="login-pass">Password</label>
@@ -703,36 +727,12 @@ function LoginScreen({ onLogin, users, ready }) {
               <span>PW</span>
               <input id="login-pass" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="Enter your password" required />
             </div>
-
-            <label htmlFor="login-member">Sign in as</label>
-            <div className="input-shell">
-              <span>ME</span>
-              <select id="login-member" value={memberId} onChange={e => setMemberId(e.target.value)}
-                style={{ flex: 1, minHeight: 44, border: 0, background: "transparent", outline: "none", font: "inherit", fontWeight: 700, color: "var(--mo-ink)", paddingRight: 14 }}>
-                {(activeUsers.length ? activeUsers : [{ id: "gaurav", name: "Gaurav", title: "Manager" }]).map(u => (
-                  <option key={u.id} value={u.id}>{u.name}{u.title ? ` — ${u.title}` : ""}</option>
-                ))}
-              </select>
-            </div>
             <a className="forgot-link" href="#" onClick={e => e.preventDefault()}>Forgot password?</a>
 
-            <button type="submit">Login to Console <span>-&gt;</span></button>
+            <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Login to Console"} <span>-&gt;</span></button>
           </form>
 
-          <div className="or-divider"><span>or</span></div>
-          <button className="sso-button" type="button" onClick={() => setError("SSO is not available in this prototype.")}>Login with SSO</button>
-          <p className="support-copy">Need help? <a href="#" onClick={e => e.preventDefault()}>Contact support</a></p>
-
-          <details className="demo-logins">
-            <summary>Demo account</summary>
-            <div className="demo-grid">
-              <div>
-                <strong>Admin</strong>
-                <span>admin123</span>
-                <code>admin123</code>
-              </div>
-            </div>
-          </details>
+          <p className="support-copy">Access is limited to the noon admin team. Need access? <a href="#" onClick={e => e.preventDefault()}>Contact Gaurav</a></p>
         </div>
       </section>
     </main>
