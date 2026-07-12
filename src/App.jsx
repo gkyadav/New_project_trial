@@ -155,6 +155,7 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [adhocTab, setAdhocTab] = useState("queue");
   const [kbTab, setKbTab] = useState("uae");
+  const [payView, setPayView] = useState("hub");
   const [adminTab, setAdminTab] = useState("access");
   const [regionFilter, setRegionFilter] = useState("all");
   const [toast, setToast] = useState(null);
@@ -512,7 +513,7 @@ export default function App() {
             const Icon = item.icon;
             const active = view === item.id;
             return (
-              <button key={item.id} className="mo-navitem" style={active ? styles.navItemActive : styles.navItem} onClick={() => setView(item.id)}>
+              <button key={item.id} className="mo-navitem" style={active ? styles.navItemActive : styles.navItem} onClick={() => { setView(item.id); if (item.id === "bau") setPayView("hub"); }}>
                 <Icon size={17} style={{ marginRight: 10, flexShrink: 0 }} />
                 {item.label}
               </button>
@@ -565,13 +566,18 @@ export default function App() {
               bauState={bauState} onNavigate={setView} />
           )}
 
-          {view === "bau" && (
+          {view === "bau" && (payView === "status" ? (
+            <div>
+              <button className="mo-btn mo-btn-sm" style={{ marginBottom: 4 }} onClick={() => setPayView("hub")}>← Back to Payments</button>
+              <PaymentStatus payments={scopedPayments} currentUser={currentUser} onChange={changePaymentStatus} />
+            </div>
+          ) : (
             <PaymentsHub
-              onOpenPaymentStatus={() => { setView("kb"); setKbTab("payments"); }}
+              onOpenPaymentStatus={() => setPayView("status")}
               onOpenKb={() => { setView("kb"); setKbTab("uae"); }}
               onLocked={name => pushToast(`"${name}" is coming next — we'll build this out as we proceed`)}
             />
-          )}
+          ))}
 
           {view === "adhoc" && (
             <div>
@@ -599,11 +605,11 @@ export default function App() {
           {view === "kb" && (
             <div>
               <SubTabs
-                tabs={[{ id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "payments", label: "Payment status" }]}
+                tabs={[{ id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "bot", label: "Bot test" }]}
                 active={kbTab} onChange={setKbTab}
               />
-              {kbTab === "payments"
-                ? <PaymentStatus payments={scopedPayments} currentUser={currentUser} onChange={changePaymentStatus} />
+              {kbTab === "bot"
+                ? <KbBot cards={kbCards} currentUser={currentUser} />
                 : <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
                     newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard}
                     onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision} />}
@@ -1214,14 +1220,17 @@ function PaymentStatus({ payments, currentUser, onChange }) {
   );
 }
 
-const KB_SECTIONS = { uae: [{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }] };
+const KB_SECTION_TABS = [{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }];
+const KB_SECTIONS = { uae: KB_SECTION_TABS, ksa: KB_SECTION_TABS, egypt: KB_SECTION_TABS };
 const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt" };
 
 const KB_TINT_MAP = {
   "uae/fulfillment": ["#2563eb", "#7c3aed"],
   "uae/logistics": ["#0891b2", "#18b56f"],
-  "ksa/general": ["#f59e0b", "#f97316"],
-  "egypt/general": ["#ec4899", "#7c3aed"],
+  "ksa/fulfillment": ["#f59e0b", "#f97316"],
+  "ksa/logistics": ["#16a34a", "#0d9488"],
+  "egypt/fulfillment": ["#ec4899", "#7c3aed"],
+  "egypt/logistics": ["#f43f5e", "#f97316"],
 };
 const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#2563eb", "#7c3aed"];
 
@@ -1247,6 +1256,104 @@ function KbPlayingCard({ card, users, pendingCount, onOpen }) {
         <span className="kb-owner-name">{ownerName}</span>
       </span>
     </button>
+  );
+}
+
+function KbBot({ cards, currentUser }) {
+  const published = cards.filter(c => c.status === "published");
+  const [messages, setMessages] = useState([{
+    role: "bot",
+    text: `Hi ${"" + (currentUser.name || "")}! I'm the Ops KB bot. Ask me anything about payment operations and I'll answer from the team's published knowledge cards. Right now I can read ${published.length} published card${published.length === 1 ? "" : "s"} — every card you publish makes me smarter.`,
+    sources: [],
+  }]);
+  const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
+
+  function answerFor(question) {
+    const tokens = (question.toLowerCase().match(/[a-z0-9]+/g) || []).filter(t => t.length > 2);
+    const scored = published
+      .map(c => {
+        const title = c.title.toLowerCase();
+        const body = c.body.toLowerCase();
+        let score = 0;
+        tokens.forEach(t => {
+          if (title.includes(t)) score += 3;
+          if (body.includes(t)) score += 1;
+        });
+        return { card: c, score };
+      })
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (published.length === 0) {
+      return { text: "My knowledge base is empty right now — I have nothing to learn from yet. Add knowledge cards and get them published, and I'll start answering from them.", sources: [] };
+    }
+    if (scored.length === 0) {
+      return { text: "I couldn't find anything in the published knowledge base about that yet. If you know the answer, add it as a knowledge card — once Gaurav publishes it, I'll be able to answer this for the whole team.", sources: [] };
+    }
+    const best = scored[0].card;
+    return {
+      text: best.body,
+      sources: scored.slice(0, 2).map(s => s.card),
+    };
+  }
+
+  function send(e) {
+    e.preventDefault();
+    const q = input.trim();
+    if (!q || thinking) return;
+    setMessages(prev => [...prev, { role: "user", text: q, sources: [] }]);
+    setInput("");
+    setThinking(true);
+    setTimeout(() => {
+      setMessages(prev => [...prev, { role: "bot", ...answerFor(q) }]);
+      setThinking(false);
+    }, 800);
+  }
+
+  return (
+    <div style={{ maxWidth: 780, margin: "14px auto 0" }}>
+      <div className="mo-card" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <span className="kb-medallion" style={{ "--kb-c1": "#2563eb", "--kb-c2": "#7c3aed", width: 42, height: 42 }}><Bot size={20} /></span>
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)" }}>Ops KB Bot <span className="mo-pill mo-pill-neutral" style={{ marginLeft: 6 }}>training</span></div>
+          <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
+            Reading {published.length} published card{published.length === 1 ? "" : "s"} across UAE, KSA and Egypt. Drafts don't count until Gaurav publishes them.
+            Long-term goal: enough vetted knowledge for the bot to decide without a human.
+          </div>
+        </div>
+      </div>
+
+      <div className="mo-card bot-thread">
+        {messages.map((m, i) => (
+          <div key={i} className={`bot-row ${m.role === "user" ? "bot-row-user" : ""}`}>
+            {m.role === "bot" && <span className="bot-avatar"><Bot size={14} /></span>}
+            <div className={m.role === "user" ? "bot-bubble-user" : "bot-bubble"}>
+              <div>{m.text}</div>
+              {m.sources.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {m.sources.map(s => (
+                    <span key={s.id} className="bot-source">
+                      <BookOpen size={11} style={{ marginRight: 4 }} />{s.title} · {COUNTRY_LABEL[s.country]}/{s.section}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {thinking && (
+          <div className="bot-row">
+            <span className="bot-avatar"><Bot size={14} /></span>
+            <div className="bot-bubble" style={{ color: "var(--mo-muted)" }}><RefreshCw size={12} className="mo-spin" style={{ marginRight: 6 }} />reading the knowledge base…</div>
+          </div>
+        )}
+        <form onSubmit={send} style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--mo-border)" }}>
+          <input className="mo-input" placeholder="Ask the bot — e.g. how do I verify a bank transfer reference?" value={input} onChange={e => setInput(e.target.value)} />
+          <button type="submit" className="mo-btn mo-btn-primary" disabled={thinking || !input.trim()} style={{ flexShrink: 0 }}><Send size={14} style={{ marginRight: 6 }} />Ask</button>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -1731,6 +1838,13 @@ body {
 .kb-addcard::before, .kb-addcard::after { display: none; }
 .kb-addcard:hover { transform: translateY(-5px); border-color: var(--mo-accent); box-shadow: 0 26px 70px rgba(35,56,86,0.2); }
 .kb-add-plus { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; box-shadow: 0 14px 30px rgba(79,70,229,0.35); }
+.bot-thread { display: flex; flex-direction: column; gap: 12px; }
+.bot-row { display: flex; align-items: flex-end; gap: 8px; }
+.bot-row-user { justify-content: flex-end; }
+.bot-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; flex-shrink: 0; box-shadow: 0 8px 18px rgba(79,70,229,0.3); }
+.bot-bubble { max-width: 78%; background: var(--mo-surface-alt); border: 1px solid var(--mo-border); border-radius: 14px 14px 14px 4px; padding: 10px 14px; font-size: 13px; line-height: 1.5; color: var(--mo-ink); }
+.bot-bubble-user { max-width: 78%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-radius: 14px 14px 4px 14px; padding: 10px 14px; font-size: 13px; font-weight: 600; line-height: 1.5; box-shadow: 0 10px 24px rgba(79,70,229,0.24); }
+.bot-source { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800; color: var(--mo-accent); background: rgba(37,99,235,0.1); border-radius: 999px; padding: 3px 10px; }
 .kb-modal-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(7,18,41,0.45); backdrop-filter: blur(6px); padding: 24px; overflow: auto; }
 .kb-modal { width: min(720px, 100%); max-height: 88vh; overflow: auto; border-radius: 22px; }
 .kb-modal > .mo-card { box-shadow: 0 40px 120px rgba(0,0,0,0.4); }
