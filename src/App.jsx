@@ -18,14 +18,6 @@ const REGIONS = {
   egypt: { id: "egypt", name: "Egypt", short: "EGY", color: "#C08A2E" },
 };
 
-const CATEGORIES = {
-  enquiry: "General enquiry",
-  new_request: "New request",
-  status: "Status check",
-  past_data: "Past data enquiry",
-  discrepancy: "Discrepancy resolution",
-};
-
 const INITIAL_USERS = [
   { id: "u1", name: "Fatima Al Mazrouei", role: "agent", region: "uae", active: true },
   { id: "u2", name: "Omar Al Qahtani", role: "agent", region: "ksa", active: true },
@@ -65,14 +57,6 @@ const INITIAL_KB = [
   { id: "k3", title: "KSA statement re-issue process", region: "ksa", status: "draft", author: "Omar Al Qahtani", updatedAt: "2026-06-29", body: "For statement re-issue requests older than 12 months, route through the archive team rather than generating from the live ledger." },
   { id: "k4", title: "Egypt split-billing request template", region: "egypt", status: "draft", author: "Nour El Sayed", updatedAt: "2026-07-01", body: "Split billing requests require a signed entity-mapping form before any account changes are made." },
 ];
-
-const AI_TEMPLATES = {
-  enquiry: (r) => `Thank you for reaching out. I've reviewed your question and can confirm the current terms remain unchanged for this cycle in ${r}. I'll follow up separately if anything applies specifically to your account.`,
-  new_request: (r) => `Thanks for the request. I've logged this for our ${r} operations team to review. New account/billing changes typically take 3–5 business days once the required documentation is received.`,
-  status: (r) => `Thank you for the update. I've checked our records for your account in ${r} and I'm confirming the current status now. I'll follow up with a definitive answer shortly.`,
-  past_data: (r) => `Thanks for your patience. I've located the historical records you requested for your ${r} account and will have them compiled and sent over shortly.`,
-  discrepancy: (r) => `I understand the concern and I'm sorry for the confusion this has caused. I'm reviewing the transaction in question against our ledger for ${r} now and will confirm the correction or explanation shortly.`,
-};
 
 /* BAU: repeatable, enumerable company spend categories. Each stage a person
    ticks today; ticking is the seam automation will later trigger through.
@@ -123,20 +107,9 @@ const BAU_PROCESSES = [
 const BAU_GROUPS = ["Fulfillment", "Logistics"];
 
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["agent", "reviewer", "admin"] },
   { id: "bau", label: "Payments", icon: CreditCard, roles: ["agent", "reviewer", "admin"] },
-  { id: "adhoc", label: "Adhoc", icon: Inbox, roles: ["agent", "reviewer", "admin"] },
   { id: "kb", label: "Knowledge base", icon: BookOpen, roles: ["agent", "reviewer", "admin"] },
-  { id: "training", label: "Training & SOPs", icon: GraduationCap, roles: ["agent", "reviewer", "admin"] },
   { id: "admin", label: "Admin", icon: ShieldCheck, roles: ["reviewer", "admin"] },
-];
-
-const LOCKED_MODULES = [
-  { name: "Customer self-service portal", phase: "Phase 2" },
-  { name: "Zero-touch ticket approval & release", phase: "Phase 3" },
-  { name: "Fully automated adhoc replies (auto-send)", phase: "Phase 3" },
-  { name: "Analytics & reporting", phase: "Phase 2" },
-  { name: "Multi-language AI drafting", phase: "Phase 3" },
 ];
 
 const STATUS_LABEL = {
@@ -252,8 +225,7 @@ function answerLooksComplete(text) {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [view, setView] = useState("dashboard");
-  const [adhocTab, setAdhocTab] = useState("queue");
+  const [view, setView] = useState("bau");
   const [kbTab, setKbTab] = useState("uae");
   const [payView, setPayView] = useState("hub");
   const [adminTab, setAdminTab] = useState("access");
@@ -276,12 +248,7 @@ export default function App() {
   const [auditLog, setAuditLog] = useState([]);
   const [dataReady, setDataReady] = useState(false);
   const [newCard, setNewCard] = useState({ title: "", steps: [emptyStep()] });
-  const [rejectingId, setRejectingId] = useState(null);
-  const [rejectNote, setRejectNote] = useState("");
-  const [editingDraftId, setEditingDraftId] = useState(null);
-  const [editingText, setEditingText] = useState("");
   const [auditFilters, setAuditFilters] = useState({ actor: "all", action: "all", region: "all" });
-  const [genLoading, setGenLoading] = useState(null);
 
   function pushToast(msg) {
     setToast(msg);
@@ -426,7 +393,7 @@ export default function App() {
       || users[0];
     localStorage.setItem("mo-user", me.id);
     setCurrentUser(me);
-    setView("dashboard");
+    setView("bau");
     setRegionFilter(me.role === "agent" && me.region ? me.region : "all");
     return null;
   }
@@ -434,63 +401,6 @@ export default function App() {
   function logout() {
     localStorage.removeItem("mo-user");
     setCurrentUser(null);
-  }
-
-  /* ---- adhoc: email queue actions ---- */
-  function assignEmail(email) {
-    setEmails(prev => prev.map(e => e.id === email.id ? { ...e, status: "assigned", assignedTo: currentUser.id } : e));
-    dbWrite(supabase.from("emails").update({ status: "assigned", assigned_to: currentUser.id }).eq("id", email.id));
-    addAudit("Assign email", `${email.subject} assigned to ${currentUser.name}`, email.region);
-  }
-
-  function generateDraft(email) {
-    setGenLoading(email.id);
-    setTimeout(() => {
-      const text = AI_TEMPLATES[email.category](REGIONS[email.region].short);
-      const draft = {
-        id: "d" + Date.now(), emailId: email.id, text, status: "pending",
-        createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
-        reviewerNote: "", goodExample: false,
-      };
-      setDrafts(prev => prev.some(d => d.id === draft.id) ? prev : [...prev, draft]);
-      setEmails(prev => prev.map(e => e.id === email.id ? { ...e, status: "in_review" } : e));
-      dbWrite(supabase.from("drafts").insert({ id: draft.id, email_id: draft.emailId, text: draft.text, status: draft.status, created_at: draft.createdAt, reviewer_note: "", good_example: false }));
-      dbWrite(supabase.from("emails").update({ status: "in_review" }).eq("id", email.id));
-      addAudit("Generate AI draft", `Draft created for "${email.subject}"`, email.region);
-      setGenLoading(null);
-      pushToast("AI draft generated — sent to review queue");
-    }, 700);
-  }
-
-  /* ---- adhoc: review queue actions ---- */
-  function approveDraft(draft, textOverride) {
-    const email = emails.find(e => e.id === draft.emailId);
-    setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: "approved", text: textOverride || d.text } : d));
-    setEmails(prev => prev.map(e => e.id === draft.emailId ? { ...e, status: "approved" } : e));
-    dbWrite(supabase.from("drafts").update({ status: "approved", text: textOverride || draft.text }).eq("id", draft.id));
-    dbWrite(supabase.from("emails").update({ status: "approved" }).eq("id", draft.emailId));
-    addAudit("Approve AI draft", `Reply to "${email.subject}" approved and marked sent (mock — no real email sent)`, email.region);
-    pushToast("Draft approved — marked as sent (mock)");
-    setEditingDraftId(null);
-  }
-
-  function rejectDraft(draft, note) {
-    const email = emails.find(e => e.id === draft.emailId);
-    setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, status: "rejected", reviewerNote: note } : d));
-    setEmails(prev => prev.map(e => e.id === draft.emailId ? { ...e, status: "assigned" } : e));
-    dbWrite(supabase.from("drafts").update({ status: "rejected", reviewer_note: note || "" }).eq("id", draft.id));
-    dbWrite(supabase.from("emails").update({ status: "assigned" }).eq("id", draft.emailId));
-    addAudit("Reject AI draft", `Draft for "${email.subject}" rejected: ${note || "no comment"}`, email.region);
-    pushToast("Draft rejected — returned to agent");
-    setRejectingId(null);
-    setRejectNote("");
-  }
-
-  function toggleGoodExample(draft) {
-    setDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, goodExample: !d.goodExample } : d));
-    dbWrite(supabase.from("drafts").update({ good_example: !draft.goodExample }).eq("id", draft.id));
-    const email = emails.find(e => e.id === draft.emailId);
-    addAudit("Curate training example", `${!draft.goodExample ? "Marked" : "Unmarked"} reply to "${email?.subject}" as a good example`, email?.region);
   }
 
   /* ---- payment actions (admin only, outside BAU checklist — direct override) ---- */
@@ -718,9 +628,6 @@ export default function App() {
   if (!currentUser) return <LoginScreen onLogin={login} users={users} restoring={!dataReady} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
-  const scopedEmails = currentUser.role === "agent"
-    ? emails.filter(e => e.region === currentUser.region)
-    : (regionFilter === "all" ? emails : emails.filter(e => e.region === regionFilter));
   const scopedPayments = currentUser.role === "agent"
     ? payments.filter(p => p.region === currentUser.region)
     : (regionFilter === "all" ? payments : payments.filter(p => p.region === regionFilter));
@@ -751,17 +658,6 @@ export default function App() {
           })}
         </nav>
 
-        <div style={{ marginTop: 20 }}>
-          <div style={styles.lockedHeading}>Coming later</div>
-          {LOCKED_MODULES.map(m => (
-            <button key={m.name} className="mo-locked" onClick={() => pushToast(`"${m.name}" is planned for ${m.phase} — not built in this prototype`)}>
-              <Lock size={13} style={{ marginRight: 8, flexShrink: 0 }} />
-              <span style={{ flex: 1, textAlign: "left" }}>{m.name}</span>
-              <span style={styles.phaseTag}>{m.phase}</span>
-            </button>
-          ))}
-        </div>
-
         <div style={styles.regionLegend}>
           <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
           {Object.values(REGIONS).map(r => (
@@ -776,7 +672,7 @@ export default function App() {
       <div style={styles.main}>
         <header style={styles.header}>
           <div>
-            <div style={styles.headerTitle}>{NAV.find(n => n.id === view)?.label || "Dashboard"}</div>
+            <div style={styles.headerTitle}>{NAV.find(n => n.id === view)?.label || "Payments"}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ textAlign: "right" }}>
@@ -791,11 +687,6 @@ export default function App() {
         <div style={styles.headerAccent} />
 
         <main style={styles.content}>
-          {view === "dashboard" && (
-            <Dashboard users={users} emails={emails} drafts={drafts} payments={payments} auditLog={auditLog}
-              bauState={bauState} onNavigate={setView} />
-          )}
-
           {view === "bau" && (payView === "status" ? (
             <div>
               <button className="mo-btn mo-btn-sm" style={{ marginBottom: 4 }} onClick={() => setPayView("hub")}>← Back to Payments</button>
@@ -808,29 +699,6 @@ export default function App() {
               onLocked={name => pushToast(`"${name}" is coming next — we'll build this out as we proceed`)}
             />
           ))}
-
-          {view === "adhoc" && (
-            <div>
-              <SubTabs
-                tabs={[{ id: "queue", label: "Inbox" }, ...(currentUser.role !== "agent" ? [{ id: "review", label: "Review queue" }] : [])]}
-                active={adhocTab} onChange={setAdhocTab}
-                trailing={currentUser.role !== "agent" && (
-                  <RegionSelect value={regionFilter} onChange={setRegionFilter} allowAll />
-                )}
-              />
-              {adhocTab === "queue" && (
-                <EmailQueue emails={scopedEmails} currentUser={currentUser} genLoading={genLoading} onAssign={assignEmail} onGenerate={generateDraft} drafts={drafts} />
-              )}
-              {adhocTab === "review" && currentUser.role !== "agent" && (
-                <ReviewQueue
-                  drafts={drafts} emails={emails} regionFilter={regionFilter}
-                  rejectingId={rejectingId} rejectNote={rejectNote} setRejectingId={setRejectingId} setRejectNote={setRejectNote}
-                  editingDraftId={editingDraftId} editingText={editingText} setEditingDraftId={setEditingDraftId} setEditingText={setEditingText}
-                  onApprove={approveDraft} onReject={rejectDraft} onToggleGoodExample={toggleGoodExample}
-                />
-              )}
-            </div>
-          )}
 
           {view === "kb" && (
             <div>
@@ -851,8 +719,6 @@ export default function App() {
               )}
             </div>
           )}
-
-          {view === "training" && <Training />}
 
           {view === "admin" && (
             <div>
@@ -875,11 +741,11 @@ export default function App() {
 /* ---------------------------------------------------------------------- */
 
 const LOGIN_FEATURES = [
-  { cls: "blue", tag: "EQ", title: "Regional Email Queue", sub: "UAE, KSA and Egypt inboxes in one place" },
-  { cls: "green", tag: "AI", title: "AI Review Queue", sub: "AI drafts reviewed before they go out" },
-  { cls: "orange", tag: "BAU", title: "BAU Checklists", sub: "Fulfillment and logistics runbooks" },
-  { cls: "purple", tag: "KB", title: "Knowledge Base", sub: "Curated cards and published answers" },
-  { cls: "cyan", tag: "AC", title: "Access Control", sub: "Roles and regional permissions" },
+  { cls: "blue", tag: "PAY", title: "Payments Hub", sub: "Fulfillment and logistics workstreams" },
+  { cls: "green", tag: "KB", title: "Knowledge Base", sub: "Step-by-step SOP cards per country" },
+  { cls: "orange", tag: "BOT", title: "KB Bot", sub: "Answers straight from the SOP steps" },
+  { cls: "purple", tag: "SOP", title: "SOP Completeness Bot", sub: "Finds gaps, asks the team, fills SOPs" },
+  { cls: "cyan", tag: "PTS", title: "Knowledge Points", sub: "Earn points for every contribution" },
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
@@ -1043,180 +909,6 @@ function PaymentsHub({ onOpenPaymentStatus, onOpenKb, onLocked }) {
   );
 }
 
-const OPEN_EMAIL_STATUSES = ["unassigned", "assigned", "in_review"];
-
-function Dashboard({ users, emails, drafts, payments, auditLog, bauState, onNavigate }) {
-  const today = new Date().toISOString().slice(0, 10);
-
-  const openEmails = emails.filter(e => OPEN_EMAIL_STATUSES.includes(e.status));
-  const unassigned = emails.filter(e => e.status === "unassigned");
-  const pendingReviews = drafts.filter(d => d.status === "pending");
-  const atRiskPayments = payments.filter(p => ["failed", "disputed"].includes(p.status));
-
-  let awaitingSecondApprover = 0;
-  BAU_PROCESSES.forEach(p => p.stages.forEach(s => {
-    const c = bauState[p.id]?.[s.id]?.confirmations || [];
-    if (s.dual && c.length === 1) awaitingSecondApprover++;
-  }));
-
-  /* Per-member workload, manager excluded from the load table */
-  const memberStats = users.filter(u => u.role !== "admin").map(u => {
-    const memberRegions = u.regions?.length ? u.regions : (u.region ? [u.region] : []);
-    const assigned = emails.filter(e => e.assignedTo === u.id);
-    const open = assigned.filter(e => ["assigned", "in_review"].includes(e.status));
-    const resolved = assigned.filter(e => ["approved", "resolved"].includes(e.status));
-    const reviewLoad = u.role === "reviewer"
-      ? pendingReviews.filter(d => {
-          const em = emails.find(e => e.id === d.emailId);
-          return em && memberRegions.includes(em.region);
-        }).length
-      : 0;
-    const memberAudit = auditLog.filter(a => a.actor === u.name);
-    const actionsToday = memberAudit.filter(a => a.at.startsWith(today)).length;
-    const pendingTotal = open.length + reviewLoad;
-    return { user: u, regions: memberRegions, open: open.length, resolved: resolved.length, reviewLoad, actionsToday, actionsTotal: memberAudit.length, pendingTotal };
-  });
-  const maxPending = Math.max(1, ...memberStats.map(m => m.pendingTotal));
-
-  /* Per-country rollups */
-  const regionBlocks = Object.values(REGIONS).map(r => {
-    const rEmails = emails.filter(e => e.region === r.id);
-    const rOpen = rEmails.filter(e => OPEN_EMAIL_STATUSES.includes(e.status));
-    const rUnassigned = rEmails.filter(e => e.status === "unassigned");
-    const rInReview = rEmails.filter(e => e.status === "in_review");
-    const rPayments = payments.filter(p => p.region === r.id);
-    const pendingAmt = rPayments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0);
-    const currency = rPayments[0]?.currency || "";
-    const rRisk = rPayments.filter(p => ["failed", "disputed"].includes(p.status));
-    const team = memberStats.filter(m => m.regions.includes(r.id));
-    return { region: r, open: rOpen.length, unassigned: rUnassigned.length, inReview: rInReview.length, pendingAmt, currency, risk: rRisk.length, team };
-  });
-
-  const oldestUnassigned = [...unassigned].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)).slice(0, 4);
-
-  const kpis = [
-    { label: "Open emails", value: openEmails.length, sub: "across all countries", tint: "#2563eb", icon: Inbox, nav: "adhoc" },
-    { label: "Unassigned", value: unassigned.length, sub: "waiting for an owner", tint: "#f97316", icon: AlertTriangle, nav: "adhoc" },
-    { label: "Pending AI reviews", value: pendingReviews.length, sub: "drafts awaiting a decision", tint: "#7c3aed", icon: Bot, nav: "adhoc" },
-    { label: "Payments at risk", value: atRiskPayments.length, sub: "failed or disputed", tint: "#e11d48", icon: CreditCard, nav: "kb" },
-    { label: "Awaiting 2nd approver", value: awaitingSecondApprover, sub: "dual-control stages", tint: "#18b56f", icon: ShieldCheck, nav: "bau" },
-  ];
-
-  return (
-    <div style={{ display: "grid", gap: 18 }}>
-      {/* KPI strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
-        {kpis.map(k => {
-          const Icon = k.icon;
-          return (
-            <button key={k.label} className="mo-card mo-clickable" style={{ borderTop: `3px solid ${k.tint}` }} onClick={() => onNavigate(k.nav)}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ width: 26, height: 26, borderRadius: 8, background: `${k.tint}1A`, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={14} color={k.tint} /></span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--mo-muted)" }}>{k.label}</span>
-              </div>
-              <div style={{ fontSize: 27, fontWeight: 900, color: "var(--mo-ink)" }}>{k.value}</div>
-              <div style={{ fontSize: 11.5, color: "var(--mo-muted)" }}>{k.sub}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Country rollups with team snapshot */}
-      <div style={styles.grid3}>
-        {regionBlocks.map(b => (
-          <div key={b.region.id} className="mo-card" style={{ borderTop: `3px solid ${b.region.color}`, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 10, height: 10, borderRadius: "50%", background: b.region.color }} />
-                <span style={{ fontWeight: 900, fontSize: 15 }}>{b.region.name}</span>
-              </div>
-              {b.risk > 0 && <span className="mo-pill mo-pill-danger">{b.risk} payment{b.risk > 1 ? "s" : ""} at risk</span>}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              <div><div style={{ fontSize: 20, fontWeight: 900 }}>{b.open}</div><div style={{ fontSize: 11, color: "var(--mo-muted)" }}>open emails</div></div>
-              <div><div style={{ fontSize: 20, fontWeight: 900, color: b.unassigned ? "#b45309" : "var(--mo-ink)" }}>{b.unassigned}</div><div style={{ fontSize: 11, color: "var(--mo-muted)" }}>unassigned</div></div>
-              <div><div style={{ fontSize: 20, fontWeight: 900 }}>{b.inReview}</div><div style={{ fontSize: 11, color: "var(--mo-muted)" }}>in AI review</div></div>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--mo-muted)", borderTop: "1px solid var(--mo-border)", paddingTop: 8 }}>
-              Pending payments: <strong style={{ color: "var(--mo-ink)" }}>{b.currency} {b.pendingAmt.toLocaleString()}</strong>
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {b.team.map(m => (
-                <div key={m.user.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12.5 }}>
-                  <span><strong>{m.user.name}</strong> <span style={{ color: "var(--mo-muted)" }}>· {m.user.title}</span></span>
-                  <span className={`mo-pill ${m.pendingTotal > 0 ? "mo-pill-warn" : "mo-pill-success"}`}>{m.pendingTotal} pending</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Team workload table */}
-      <div>
-        <div style={{ margin: "4px 0 10px", fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Team workload — all members</div>
-        <div className="mo-table-wrap">
-          <table className="mo-table">
-            <thead>
-              <tr><th>Member</th><th>Role</th><th>Countries</th><th>Open emails</th><th>Reviews waiting</th><th>Resolved</th><th>Actions today</th><th>Total actions</th><th style={{ width: 180 }}>Pending load</th></tr>
-            </thead>
-            <tbody>
-              {memberStats.map(m => (
-                <tr key={m.user.id}>
-                  <td><strong>{m.user.name}</strong>{!m.user.active && <span className="mo-pill mo-pill-danger" style={{ marginLeft: 6 }}>inactive</span>}</td>
-                  <td>{m.user.title}</td>
-                  <td>{m.regions.map(r => REGIONS[r]?.short).join(", ")}</td>
-                  <td>{m.open}</td>
-                  <td>{m.reviewLoad}</td>
-                  <td>{m.resolved}</td>
-                  <td>{m.actionsToday}</td>
-                  <td>{m.actionsTotal}</td>
-                  <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div className="mo-progress-track" style={{ flex: 1 }}>
-                        <div className="mo-progress-fill" style={{ width: `${(m.pendingTotal / maxPending) * 100}%`, background: m.pendingTotal === 0 ? "var(--mo-success)" : "linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))" }} />
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 900, minWidth: 16, textAlign: "right" }}>{m.pendingTotal}</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Needs attention */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div className="mo-card">
-          <div style={{ fontWeight: 900, fontSize: 13.5, marginBottom: 10 }}>Oldest unassigned emails</div>
-          {oldestUnassigned.length === 0 && <EmptyState text="Nothing unassigned — inbox fully owned." />}
-          <div style={{ display: "grid", gap: 8 }}>
-            {oldestUnassigned.map(e => (
-              <button key={e.id} className="mo-clickable" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "none", border: "none", padding: "6px 0", borderBottom: "1px solid var(--mo-border)" }} onClick={() => onNavigate("adhoc")}>
-                <span style={{ fontSize: 12.5, textAlign: "left" }}><strong>{e.subject}</strong><br /><span style={{ color: "var(--mo-muted)" }}>{e.from}</span></span>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}><RegionDot region={e.region} /><span style={{ fontSize: 11.5, color: "var(--mo-muted)" }}>{e.receivedAt}</span></span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mo-card">
-          <div style={{ fontWeight: 900, fontSize: 13.5, marginBottom: 10 }}>Payments needing attention</div>
-          {atRiskPayments.length === 0 && <EmptyState text="No failed or disputed payments." />}
-          <div style={{ display: "grid", gap: 8 }}>
-            {atRiskPayments.map(p => (
-              <button key={p.id} className="mo-clickable" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "none", border: "none", padding: "6px 0", borderBottom: "1px solid var(--mo-border)" }} onClick={() => onNavigate("kb")}>
-                <span style={{ fontSize: 12.5, textAlign: "left" }}><strong>{p.customer}</strong><br /><span style={{ color: "var(--mo-muted)" }}>{p.currency} {p.amount.toLocaleString()} · updated {p.updatedAt}</span></span>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}><RegionDot region={p.region} /><StatusPill status={p.status} /></span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function BauConsole({ bauState, currentUser, onCheck, onReset }) {
   const [expanded, setExpanded] = useState(null);
   const palette = { Fulfillment: "#6C4FE0", Logistics: "#00B8A9" };
@@ -1289,145 +981,6 @@ function BauConsole({ bauState, currentUser, onCheck, onReset }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function EmailQueue({ emails, currentUser, genLoading, onAssign, onGenerate, drafts }) {
-  return (
-    <div>
-      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
-        {currentUser.role === "agent"
-          ? `Showing enquiries for ${REGIONS[currentUser.region].name} only.`
-          : "Showing all regions unless filtered above. Read access only — assignment is performed by the owning region's agent."}
-      </p>
-      <div className="mo-table-wrap">
-        <table className="mo-table">
-          <thead>
-            <tr><th>Region</th><th>From</th><th>Subject</th><th>Category</th><th>Received</th><th>Status</th><th></th></tr>
-          </thead>
-          <tbody>
-            {emails.map(e => (
-              <tr key={e.id}>
-                <td><RegionDot region={e.region} /></td>
-                <td className="mo-mono">{e.from}</td>
-                <td>
-                  <div style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{e.subject}</div>
-                  <div style={{ fontSize: 12, color: "var(--mo-muted)", maxWidth: 340 }}>{e.body}</div>
-                </td>
-                <td><span className="mo-pill mo-pill-neutral">{CATEGORIES[e.category]}</span></td>
-                <td className="mo-mono" style={{ fontSize: 12 }}>{e.receivedAt}</td>
-                <td><StatusPill status={e.status} /></td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  {e.status === "unassigned" && currentUser.role !== "reviewer" && (
-                    <button className="mo-btn mo-btn-sm" onClick={() => onAssign(e)}>Assign to me</button>
-                  )}
-                  {e.status === "assigned" && e.assignedTo === currentUser.id && (
-                    <button className="mo-btn mo-btn-sm" disabled={genLoading === e.id} onClick={() => onGenerate(e)}>
-                      {genLoading === e.id ? <><RefreshCw size={12} className="mo-spin" style={{ marginRight: 6 }} />Generating…</> : <><Bot size={12} style={{ marginRight: 6 }} />Generate AI draft</>}
-                    </button>
-                  )}
-                  {e.status === "in_review" && <span style={{ fontSize: 12, color: "var(--mo-muted)" }}>Awaiting reviewer</span>}
-                  {e.status === "approved" && <span style={{ fontSize: 12, color: "var(--mo-success)" }}>Marked sent (mock)</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function ReviewQueue({ drafts, emails, regionFilter, rejectingId, rejectNote, setRejectingId, setRejectNote, editingDraftId, editingText, setEditingDraftId, setEditingText, onApprove, onReject, onToggleGoodExample }) {
-  const withEmail = drafts.map(d => ({ ...d, email: emails.find(e => e.id === d.emailId) }))
-    .filter(d => regionFilter === "all" || d.email.region === regionFilter);
-  const pending = withEmail.filter(d => d.status === "pending");
-  const decided = withEmail.filter(d => d.status !== "pending").slice(0, 8);
-
-  return (
-    <div>
-      <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
-        Every AI-drafted reply stops here before anything is considered "sent." Approval only marks the reply as sent (mock) — nothing in this
-        prototype delivers real email. Marking a good reply as an example is how the team starts curating what the AI should learn from over time.
-      </p>
-      {pending.length === 0 && <EmptyState text="No drafts waiting on review right now." />}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {pending.map(d => (
-          <div key={d.id} className="mo-card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <RegionDot region={d.email.region} />
-                  <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{d.email.subject}</span>
-                </div>
-                <div className="mo-mono" style={{ fontSize: 12, color: "var(--mo-muted)" }}>{d.email.from} · drafted {d.createdAt}</div>
-              </div>
-              <span className="mo-pill mo-pill-neutral">{CATEGORIES[d.email.category]}</span>
-            </div>
-
-            <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--mo-surface-alt)", borderRadius: 8, fontSize: 13.5, color: "var(--mo-ink)" }}>
-              {editingDraftId === d.id ? (
-                <textarea className="mo-textarea" rows={4} value={editingText} onChange={ev => setEditingText(ev.target.value)} />
-              ) : d.text}
-            </div>
-
-            {rejectingId === d.id && (
-              <div style={{ marginTop: 10 }}>
-                <textarea className="mo-textarea" rows={2} placeholder="Why is this being rejected? (visible to the agent)" value={rejectNote} onChange={ev => setRejectNote(ev.target.value)} />
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              {editingDraftId === d.id ? (
-                <>
-                  <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onApprove(d, editingText)}><CheckCircle2 size={13} style={{ marginRight: 6 }} />Save & approve</button>
-                  <button className="mo-btn mo-btn-sm" onClick={() => setEditingDraftId(null)}>Cancel edit</button>
-                </>
-              ) : rejectingId === d.id ? (
-                <>
-                  <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => onReject(d, rejectNote)}><XCircle size={13} style={{ marginRight: 6 }} />Confirm reject</button>
-                  <button className="mo-btn mo-btn-sm" onClick={() => setRejectingId(null)}>Cancel</button>
-                </>
-              ) : (
-                <>
-                  <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onApprove(d)}><CheckCircle2 size={13} style={{ marginRight: 6 }} />Approve</button>
-                  <button className="mo-btn mo-btn-sm" onClick={() => { setEditingDraftId(d.id); setEditingText(d.text); }}><Pencil size={13} style={{ marginRight: 6 }} />Edit</button>
-                  <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => setRejectingId(d.id)}><XCircle size={13} style={{ marginRight: 6 }} />Reject</button>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {decided.length > 0 && (
-        <>
-          <div style={{ marginTop: 24, marginBottom: 10, fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Recently decided</div>
-          <div className="mo-table-wrap">
-            <table className="mo-table">
-              <thead><tr><th>Region</th><th>Subject</th><th>Outcome</th><th>Note</th><th>Example</th></tr></thead>
-              <tbody>
-                {decided.map(d => (
-                  <tr key={d.id}>
-                    <td><RegionDot region={d.email.region} /></td>
-                    <td>{d.email.subject}</td>
-                    <td><StatusPill status={d.status === "approved" ? "approved" : "failed"} label={d.status === "approved" ? "Approved" : "Rejected"} /></td>
-                    <td style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>{d.reviewerNote || "—"}</td>
-                    <td>
-                      {d.status === "approved" ? (
-                        <button className={`mo-btn mo-btn-sm ${d.goodExample ? "mo-btn-primary" : ""}`} onClick={() => onToggleGoodExample(d)}>
-                          <Sparkles size={12} style={{ marginRight: 6 }} />{d.goodExample ? "Curated" : "Mark as example"}
-                        </button>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -1966,33 +1519,6 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
   );
 }
 
-function Training() {
-  const topics = ["Regional compliance basics", "Handling discrepancy escalations", "Working the AI review queue", "BAU checklist walkthroughs"];
-  return (
-    <div>
-      <div className="mo-card" style={{ margin: "14px 0 16px", background: "var(--mo-locked-bg)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <Lock size={14} color="var(--mo-muted)" />
-          <span style={{ fontWeight: 800, color: "var(--mo-ink)" }}>Structured training is a placeholder in this prototype</span>
-        </div>
-        <p style={{ fontSize: 13, color: "var(--mo-muted)", margin: 0 }}>
-          The goal is a single place a new team member can learn the SOPs without asking around — built from knowledge cards and real email history.
-          Lessons, quizzes, and certification tracking are planned for Phase 2; the topics below show intended scope only.
-        </p>
-      </div>
-      <div style={styles.grid4}>
-        {topics.map(t => (
-          <div key={t} className="mo-lockedtile" style={{ cursor: "default" }}>
-            <GraduationCap size={16} style={{ marginBottom: 8, color: "var(--mo-muted)" }} />
-            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--mo-ink)" }}>{t}</div>
-            <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 4 }}>Phase 2</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function AccessControl({ users, onToggle }) {
   return (
     <div>
@@ -2023,8 +1549,6 @@ function AccessControl({ users, onToggle }) {
           <tbody>
             {[
               ["BAU checklist", "Tick own-team stages", "Tick stages, second approver", "Tick stages, second approver, reset cycle"],
-              ["Adhoc inbox", "Own region, assign & draft", "All regions, view only", "All regions, view only"],
-              ["AI review queue", "No access", "Approve / edit / reject", "Approve / edit / reject"],
               ["Payment status", "Own region, view only", "All regions, view only", "All regions, edit"],
               ["Knowledge cards", "Create drafts, propose edits", "Create drafts, propose edits", "Create, publish, assign, request updates"],
               ["SOP bot & points", "Answer questions, earn points", "Answer questions, earn points", "Scan for gaps, dismiss questions"],
