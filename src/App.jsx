@@ -165,6 +165,58 @@ function toBulletPoints(body) {
     .join("\n");
 }
 
+/* Knowledge cards are structured as STEP BLOCKS: every card is a sequence
+   of { name, detail } steps — a mandatory step name plus a description,
+   one point per line. `body` is kept as derived text (search, bot, gap
+   detection); `steps` is the source of truth once a card is saved through
+   the step editor. Older cards without stored steps are parsed on the fly. */
+const emptyStep = () => ({ name: "", detail: "" });
+
+function stepsToBody(steps) {
+  return steps.map(s => `${s.name}:\n${toBulletPoints(s.detail)}`).join("\n");
+}
+
+/* Best-effort parser for legacy free-text bodies → step blocks. Headings
+   ("NAME: …") and numbered lines start steps; bullets become the detail. */
+function parseSteps(body) {
+  const steps = [];
+  const push = name => steps.push({ name: name.trim().replace(/[:.]$/, ""), detail: "" });
+  const addDetail = text => {
+    if (!steps.length) push("Overview");
+    const s = steps[steps.length - 1];
+    const clean = text.replace(/^[•\-*]\s*/, "").trim();
+    if (clean) s.detail += (s.detail ? "\n" : "") + "• " + clean;
+  };
+  (body || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+    if (/^[•\-*]\s/.test(line)) { addDetail(line); return; }
+    const num = line.match(/^\d+[.)]\s+(.*)$/);
+    if (num) {
+      const rest = num[1];
+      const cut = rest.search(/[:—.]/);
+      if (cut > 4 && cut < 70) { push(rest.slice(0, cut)); addDetail(rest.slice(cut + 1)); }
+      else push(rest.slice(0, 70));
+      return;
+    }
+    const head = line.match(/^(.{3,80}?):(.*)$/);
+    if (head && !/https?$/i.test(head[1])) { push(head[1]); addDetail(head[2]); return; }
+    addDetail(line);
+  });
+  return steps.length ? steps : [{ name: "Overview", detail: toBulletPoints(body || "") }];
+}
+
+/* Steps for a card: stored steps if present, else parsed from the body. */
+const cardSteps = card => (card.steps && card.steps.length ? card.steps : parseSteps(card.body));
+
+/* Step name for an answer coming out of the SOP bot. */
+function stepNameFor(question) {
+  if (/cutoff|deadline/i.test(question)) return "Cutoffs & deadlines";
+  if (/escalation|goes wrong|dispute/i.test(question)) return "Escalation path";
+  if (/document|attach/i.test(question)) return "Required documents";
+  if (/POC|responsible/i.test(question)) return "POCs & ownership";
+  if (/step-by-step|thin/i.test(question)) return "Process steps";
+  return question.replace(/^There is an open point in this SOP: /i, "").slice(0, 60);
+}
+
 /* SOP completeness bot: heuristics that flag what a card is still missing.
    Each gap becomes a question the team answers for points. */
 function detectGaps(card) {
@@ -225,7 +277,7 @@ export default function App() {
   });
   const [auditLog, setAuditLog] = useState([]);
   const [dataReady, setDataReady] = useState(false);
-  const [newCard, setNewCard] = useState({ title: "", body: "" });
+  const [newCard, setNewCard] = useState({ title: "", steps: [emptyStep()] });
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectNote, setRejectNote] = useState("");
   const [editingDraftId, setEditingDraftId] = useState(null);
@@ -489,18 +541,32 @@ export default function App() {
   }
 
   /* ---- knowledge base actions ---- */
+  /* Every step block must carry a name AND a description — that's the
+     mandate that keeps SOPs clean and extensible step by step. */
+  function cleanSteps(steps) {
+    const clean = (steps || [])
+      .map(s => ({ name: s.name.trim(), detail: toBulletPoints(s.detail) }))
+      .filter(s => s.name || s.detail);
+    if (clean.length === 0) return { error: "Add at least one step" };
+    const incomplete = clean.find(s => !s.name || !s.detail);
+    if (incomplete) return { error: "Every step needs both a step name and a description" };
+    return { steps: clean };
+  }
+
   function createCard(country, section) {
-    if (!newCard.title.trim() || !newCard.body.trim()) { pushToast("Title and body are required"); return; }
+    if (!newCard.title.trim()) { pushToast("Card title is required"); return; }
+    const { steps, error } = cleanSteps(newCard.steps);
+    if (error) { pushToast(error); return; }
     const card = {
-      id: "k" + Date.now(), title: newCard.title, body: toBulletPoints(newCard.body),
+      id: "k" + Date.now(), title: newCard.title, body: stepsToBody(steps), steps,
       region: country, country, section, owner: currentUser.id,
       status: "draft", author: currentUser.name, updatedAt: new Date().toISOString().slice(0, 10),
     };
     setKbCards(prev => prev.some(c => c.id === card.id) ? prev : [card, ...prev]);
-    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, region: country, country, section, owner: card.owner, status: card.status, author: card.author, updated_at: card.updatedAt }));
+    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, steps: card.steps, region: country, country, section, owner: card.owner, status: card.status, author: card.author, updated_at: card.updatedAt }));
     addAudit("Create knowledge card", `Draft created: "${card.title}" (${country.toUpperCase()} / ${section})`, country);
     awardPoints(currentUser.id, currentUser.name, POINTS.newCard, `New knowledge card: "${card.title}"`, card.id);
-    setNewCard({ title: "", body: "" });
+    setNewCard({ title: "", steps: [emptyStep()] });
     pushToast(`+${POINTS.newCard} pts — ` + (currentUser.role === "admin" ? "draft card saved" : "draft card saved, pending Gaurav's vetting"));
   }
 
@@ -513,17 +579,20 @@ export default function App() {
   }
 
   /* ---- knowledge base: git-style revisions ---- */
-  function proposeCardEdit(card, title, body) {
-    if (!title.trim() || !body.trim()) { pushToast("Title and body are required"); return; }
+  function proposeCardEdit(card, title, steps) {
+    if (!title.trim()) { pushToast("Card title is required"); return; }
+    const cleaned = cleanSteps(steps);
+    if (cleaned.error) { pushToast(cleaned.error); return; }
+    const body = stepsToBody(cleaned.steps);
     if (title === card.title && body === card.body) { pushToast("No changes to propose"); return; }
     const rev = {
-      id: "r" + Date.now(), cardId: card.id, title, body: toBulletPoints(body),
+      id: "r" + Date.now(), cardId: card.id, title, body, steps: cleaned.steps,
       authorId: currentUser.id, authorName: currentUser.name, note: "",
       status: "pending", createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
       decidedAt: null, decidedBy: null,
     };
     setKbRevisions(prev => prev.some(r => r.id === rev.id) ? prev : [rev, ...prev]);
-    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, author_id: rev.authorId, author_name: rev.authorName, note: "", status: "pending", created_at: rev.createdAt }));
+    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, steps: rev.steps, author_id: rev.authorId, author_name: rev.authorName, note: "", status: "pending", created_at: rev.createdAt }));
     addAudit("Propose card edit", `Edit proposed for "${card.title}"`, card.country);
     pushToast(currentUser.role === "admin" ? "Revision created — merge it to apply" : "Edit submitted — awaiting Gaurav's merge");
   }
@@ -532,9 +601,9 @@ export default function App() {
     const updatedAt = new Date().toISOString().slice(0, 10);
     const decidedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
     /* Merging an edit also clears any open update request on the card. */
-    setKbCards(prev => prev.map(c => c.id === rev.cardId ? { ...c, title: rev.title, body: rev.body, updatedAt, updateRequest: "", updateRequestedBy: null, updateRequestedAt: null } : c));
+    setKbCards(prev => prev.map(c => c.id === rev.cardId ? { ...c, title: rev.title, body: rev.body, steps: rev.steps || c.steps, updatedAt, updateRequest: "", updateRequestedBy: null, updateRequestedAt: null } : c));
     setKbRevisions(prev => prev.map(r => r.id === rev.id ? { ...r, status: "merged", decidedAt, decidedBy: currentUser.name } : r));
-    dbWrite(supabase.from("kb_cards").update({ title: rev.title, body: rev.body, updated_at: updatedAt, update_request: "", update_requested_by: null, update_requested_at: null }).eq("id", rev.cardId));
+    dbWrite(supabase.from("kb_cards").update({ title: rev.title, body: rev.body, steps: rev.steps, updated_at: updatedAt, update_request: "", update_requested_by: null, update_requested_at: null }).eq("id", rev.cardId));
     dbWrite(supabase.from("kb_revisions").update({ status: "merged", decided_at: decidedAt, decided_by: currentUser.name }).eq("id", rev.id));
     addAudit("Merge card revision", `Merged ${rev.authorName}'s edit into "${rev.title}"`, "-");
     awardPoints(rev.authorId, rev.authorName, POINTS.mergedRevision, `Edit merged into "${rev.title}"`, rev.id);
@@ -614,15 +683,17 @@ export default function App() {
   function submitAnswerToCard(q) {
     const card = kbCards.find(c => c.id === q.cardId);
     if (!card) { pushToast("The card behind this question no longer exists"); return; }
+    /* The accepted answer becomes a NEW STEP on the card. */
+    const steps = [...cardSteps(card), { name: stepNameFor(q.question), detail: toBulletPoints(q.answer) }];
     const rev = {
       id: "r" + Date.now(), cardId: card.id, title: card.title,
-      body: card.body + "\n" + toBulletPoints(q.answer),
+      body: stepsToBody(steps), steps,
       authorId: q.answeredBy, authorName: q.answeredByName, note: `SOP bot: ${q.question}`,
       status: "pending", createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
       decidedAt: null, decidedBy: null,
     };
     setKbRevisions(prev => prev.some(r => r.id === rev.id) ? prev : [rev, ...prev]);
-    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, author_id: rev.authorId, author_name: rev.authorName, note: rev.note, status: "pending", created_at: rev.createdAt }));
+    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, steps: rev.steps, author_id: rev.authorId, author_name: rev.authorName, note: rev.note, status: "pending", created_at: rev.createdAt }));
     setBotQuestions(prev => prev.map(x => x.id === q.id ? { ...x, status: "submitted" } : x));
     dbWrite(supabase.from("bot_questions").update({ status: "submitted" }).eq("id", q.id));
     addAudit("Submit bot answer to card", `Answer on "${q.cardTitle}" submitted as a revision`, q.country);
@@ -1419,7 +1490,7 @@ function KbPlayingCard({ card, users, currentUser, pendingCount, onOpen }) {
       </span>
       <span className="kb-medallion"><BookOpen size={21} /></span>
       <span className="kb-pcard-title">{card.title}</span>
-      <span className="kb-pcard-body">{card.body}</span>
+      <span className="kb-pcard-body">{cardSteps(card).map((s, i) => `${i + 1}. ${s.name}`).join("\n")}</span>
       <span className="kb-pcard-foot">
         <span className="kb-avatar">{initials}</span>
         <span className="kb-owner-name">{ownerName}</span>
@@ -1441,38 +1512,36 @@ function KbBot({ cards, currentUser }) {
 
   function answerFor(question) {
     const tokens = (question.toLowerCase().match(/[a-z0-9]+/g) || []).filter(t => t.length > 2);
-    const scored = cards
-      .map(c => {
-        const title = c.title.toLowerCase();
-        const body = c.body.toLowerCase();
-        let score = 0;
-        tokens.forEach(t => {
-          if (title.includes(t)) score += 3;
-          if (body.includes(t)) score += 1;
-        });
-        /* Published (vetted) cards outrank drafts on ties. */
-        if (c.status === "published") score += 0.5;
-        return { card: c, score };
-      })
-      .filter(s => s.score >= 1)
-      .sort((a, b) => b.score - a.score);
-
     if (cards.length === 0) {
       return { text: "My knowledge base is empty right now — I have nothing to learn from yet. Add knowledge cards and I'll start answering from them.", sources: [] };
     }
-    if (scored.length === 0) {
+    /* Score every STEP of every card, so the answer is the specific step
+       that matches — never a dump of the whole card. */
+    const hits = [];
+    cards.forEach(card => {
+      const titleHits = tokens.filter(t => card.title.toLowerCase().includes(t)).length;
+      cardSteps(card).forEach((s, idx) => {
+        let score = titleHits * 2 + (card.status === "published" ? 0.5 : 0);
+        tokens.forEach(t => {
+          if (s.name.toLowerCase().includes(t)) score += 3;
+          if (s.detail.toLowerCase().includes(t)) score += 1;
+        });
+        if (score >= 2) hits.push({ card, idx, step: s, score });
+      });
+    });
+    hits.sort((a, b) => b.score - a.score);
+    if (hits.length === 0) {
       return { text: "I couldn't find anything in the knowledge base about that yet. If you know the answer, add it as a knowledge card — every card makes me smarter. You can also check the SOP Bot tab: answering its questions fills gaps like this one.", sources: [] };
     }
-    const best = scored[0].card;
-    /* Answer with the specific points that match, not the whole card. */
-    const lines = best.body.split("\n").map(l => l.trim()).filter(Boolean);
-    const hits = lines.filter(l => tokens.some(t => l.toLowerCase().includes(t)));
-    const chosen = (hits.length ? hits : lines).slice(0, 10);
-    const caveat = best.status === "draft" ? " (from a draft card — not yet vetted by Gaurav)" : "";
-    return {
-      text: `${best.title}${caveat}:\n${chosen.join("\n")}`,
-      sources: scored.slice(0, 2).map(s => s.card),
-    };
+    const bestCard = hits[0].card;
+    const fromBest = hits.filter(h => h.card.id === bestCard.id).slice(0, 2).sort((a, b) => a.idx - b.idx);
+    const caveat = bestCard.status === "draft" ? " (draft — not yet vetted by Gaurav)" : "";
+    const text = `${bestCard.title}${caveat}\n\n` + fromBest
+      .map(h => `Step ${h.idx + 1} — ${h.step.name}\n${h.step.detail}`)
+      .join("\n\n");
+    const sourceCards = [];
+    hits.forEach(h => { if (!sourceCards.some(c => c.id === h.card.id)) sourceCards.push(h.card); });
+    return { text, sources: sourceCards.slice(0, 2) };
   }
 
   function send(e) {
@@ -1723,10 +1792,10 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
           <div className="kb-modal" onClick={e => e.stopPropagation()}>
             <div className="mo-card">
               <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4, color: "var(--mo-ink)" }}>New draft card — {COUNTRY_LABEL[country]}{sections ? ` / ${sections.find(s => s.id === section).label}` : ""}</div>
-              <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 10 }}>You ({currentUser.name}) will own this card. It stays a draft until Gaurav publishes it.</div>
-              <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 8 }} />
-              <textarea className="mo-textarea" rows={4} placeholder="Card content — what should the team know?" value={newCard.body} onChange={e => setNewCard({ ...newCard, body: e.target.value })} style={{ marginBottom: 8 }} />
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 10 }}>You ({currentUser.name}) will own this card. Build it as steps — every step needs a name and a description (one point per line). It stays a draft until Gaurav publishes it.</div>
+              <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 10 }} />
+              <StepEditor steps={newCard.steps} onChange={steps => setNewCard({ ...newCard, steps })} />
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onCreate(country, sections ? section : "general"); setShowForm(false); }}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
                 <button className="mo-btn mo-btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
               </div>
@@ -1751,7 +1820,7 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
 function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
   const [editing, setEditing] = useState(false);
   const [eTitle, setETitle] = useState(card.title);
-  const [eBody, setEBody] = useState(card.body);
+  const [eSteps, setESteps] = useState(cardSteps(card));
   const [showHistory, setShowHistory] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requestNote, setRequestNote] = useState("");
@@ -1760,7 +1829,7 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
   const pending = revisions.filter(r => r.status === "pending");
   const history = revisions.filter(r => r.status !== "pending");
 
-  function startEdit() { setETitle(card.title); setEBody(card.body); setEditing(true); }
+  function startEdit() { setETitle(card.title); setESteps(cardSteps(card).map(s => ({ ...s }))); setEditing(true); }
 
   return (
     <div className="mo-card">
@@ -1782,7 +1851,17 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
               {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onClearUpdate(card)}>Clear</button>}
             </div>
           )}
-          <div style={{ fontSize: 13, color: "var(--mo-ink)", maxWidth: 640, whiteSpace: "pre-line" }}>{card.body}</div>
+          <div style={{ display: "grid", gap: 8, maxWidth: 640, marginTop: 4 }}>
+            {cardSteps(card).map((s, i) => (
+              <div key={i} className="kb-step">
+                <div className="kb-step-head">
+                  <span className="kb-step-num">Step {i + 1}</span>
+                  <strong style={{ fontSize: 13 }}>{s.name}</strong>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
+              </div>
+            ))}
+          </div>
           <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>
             Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
           </div>
@@ -1818,9 +1897,9 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
 
       {editing && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)" }}>
-          <input className="mo-input" value={eTitle} onChange={e => setETitle(e.target.value)} style={{ marginBottom: 8 }} />
-          <textarea className="mo-textarea" rows={4} value={eBody} onChange={e => setEBody(e.target.value)} style={{ marginBottom: 8 }} />
-          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onPropose(card, eTitle, eBody); setEditing(false); }}>
+          <input className="mo-input" value={eTitle} onChange={e => setETitle(e.target.value)} style={{ marginBottom: 10 }} />
+          <StepEditor steps={eSteps} onChange={setESteps} />
+          <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => { onPropose(card, eTitle, eSteps); setEditing(false); }}>
             <Send size={12} style={{ marginRight: 6 }} />Submit for merge
           </button>
         </div>
@@ -1843,7 +1922,18 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
               </div>
               {r.note && <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 4 }}><HelpCircle size={11} style={{ marginRight: 4, verticalAlign: -1 }} />{r.note}</div>}
               {r.title !== card.title && <div style={{ fontSize: 12.5, marginBottom: 4 }}><span style={{ color: "var(--mo-muted)" }}>Title → </span><strong>{r.title}</strong></div>}
-              <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{r.body}</div>
+              {r.steps && r.steps.length ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {r.steps.map((s, i) => (
+                    <div key={i} className="kb-step" style={{ background: "rgba(255,255,255,0.7)" }}>
+                      <div className="kb-step-head"><span className="kb-step-num">Step {i + 1}</span><strong style={{ fontSize: 12.5 }}>{s.name}</strong></div>
+                      <div style={{ fontSize: 12, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{r.body}</div>
+              )}
             </div>
           ))}
         </div>
@@ -1990,6 +2080,34 @@ function AuditLogView({ entries, users, filters, setFilters }) {
 /* ---------------------------------------------------------------------- */
 /* Small shared components                                                  */
 /* ---------------------------------------------------------------------- */
+
+/* Step-block editor: the only way card content is written. Each block is a
+   mandatory step name + description, so SOPs stay clean and each step can
+   be extended later without touching the others. */
+function StepEditor({ steps, onChange }) {
+  function update(i, patch) { onChange(steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s))); }
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {steps.map((s, i) => (
+        <div key={i} className="kb-step">
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+            <span className="kb-step-num" style={{ flexShrink: 0 }}>Step {i + 1}</span>
+            <input className="mo-input" placeholder="Step name (e.g. Collect attendance inputs)" value={s.name} onChange={e => update(i, { name: e.target.value })} />
+            {steps.length > 1 && (
+              <button className="mo-btn mo-btn-sm mo-btn-danger" style={{ flexShrink: 0 }} title="Remove step" onClick={() => onChange(steps.filter((_, idx) => idx !== i))}>
+                <XCircle size={12} />
+              </button>
+            )}
+          </div>
+          <textarea className="mo-textarea" rows={3} placeholder="Step description — one point per line" value={s.detail} onChange={e => update(i, { detail: e.target.value })} />
+        </div>
+      ))}
+      <button className="mo-btn mo-btn-sm" style={{ justifySelf: "start" }} onClick={() => onChange([...steps, emptyStep()])}>
+        <PlusCircle size={13} style={{ marginRight: 6 }} />Add step
+      </button>
+    </div>
+  );
+}
 
 function SubTabs({ tabs, active, onChange, trailing }) {
   return (
@@ -2195,6 +2313,9 @@ body {
 .bot-bubble { max-width: 78%; background: var(--mo-surface-alt); border: 1px solid var(--mo-border); border-radius: 14px 14px 14px 4px; padding: 10px 14px; font-size: 13px; line-height: 1.5; color: var(--mo-ink); }
 .bot-bubble-user { max-width: 78%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-radius: 14px 14px 4px 14px; padding: 10px 14px; font-size: 13px; font-weight: 600; line-height: 1.5; box-shadow: 0 10px 24px rgba(79,70,229,0.24); }
 .bot-source { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800; color: var(--mo-accent); background: rgba(37,99,235,0.1); border-radius: 999px; padding: 3px 10px; }
+.kb-step { border: 1px solid var(--mo-border); border-radius: 10px; padding: 8px 10px; background: var(--mo-surface-alt); }
+.kb-step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.kb-step-num { display: inline-block; font-size: 10.5px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; color: #fff; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); border-radius: 999px; padding: 2px 9px; }
 .kb-modal-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(7,18,41,0.45); backdrop-filter: blur(6px); padding: 24px; overflow: auto; }
 .kb-modal { width: min(720px, 100%); max-height: 88vh; overflow: auto; border-radius: 22px; }
 .kb-modal > .mo-card { box-shadow: 0 40px 120px rgba(0,0,0,0.4); }
