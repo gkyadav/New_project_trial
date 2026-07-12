@@ -251,8 +251,6 @@ function answerLooksComplete(text) {
 /* ---------------------------------------------------------------------- */
 
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("dashboard");
   const [adhocTab, setAdhocTab] = useState("queue");
@@ -306,16 +304,9 @@ export default function App() {
     return init;
   }
 
-  /* Auth session: restore on load, track changes. */
+  /* Initial load: hydrate all state from Supabase on mount (no auth —
+     prototype mode uses a shared in-app login instead). */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthChecked(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  /* Initial load: hydrate all state from Supabase once signed in. */
-  useEffect(() => {
-    if (!session) { setDataReady(false); setCurrentUser(null); return; }
     let cancelled = false;
     async function loadAll() {
       const [u, e, d, p, k, kr, b, a, pl, bq] = await Promise.all([
@@ -347,27 +338,22 @@ export default function App() {
     }
     loadAll();
     return () => { cancelled = true; };
-  }, [session?.user?.email]);
+  }, []);
 
-  /* Resolve the signed-in auth account to a team member row. */
+  /* Restore the last chosen identity across reloads. */
   useEffect(() => {
-    if (!session || !dataReady || users.length === 0) return;
-    const me = users.find(u => u.id === session.user.email);
-    if (!me || !me.active) {
-      supabase.auth.signOut();
-      pushToast("This account is not authorized for the Ops Console.");
-      return;
-    }
-    setCurrentUser(prev => (prev?.id === me.id ? prev : me));
-    if (!currentUser) {
-      setView("dashboard");
+    if (!dataReady || currentUser) return;
+    const saved = localStorage.getItem("mo-user");
+    if (!saved) return;
+    const me = users.find(u => u.id === saved && u.active);
+    if (me) {
+      setCurrentUser(me);
       setRegionFilter(me.role === "agent" && me.region ? me.region : "all");
     }
-  }, [session, dataReady, users]);
+  }, [dataReady, users]);
 
   /* Realtime: apply changes made by other users as they happen. */
   useEffect(() => {
-    if (!session) return;
     function upsertBy(setList, mapRow, payload, { prepend = false } = {}) {
       if (payload.eventType === "DELETE") {
         const oldId = payload.old?.id;
@@ -415,7 +401,7 @@ export default function App() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [session?.user?.email]);
+  }, []);
 
   function addAudit(action, detail, region) {
     const entry = {
@@ -427,13 +413,26 @@ export default function App() {
     dbWrite(supabase.from("audit_log").insert({ id: entry.id, at: entry.at, actor: entry.actor, action: entry.action, detail: entry.detail, region: entry.region }));
   }
 
-  async function login(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    return error ? "Sign-in failed: incorrect noon ID or password." : null;
+  /* Prototype login: shared credentials, no auth service. Pick who you
+     are so cards, points and approvals are attributed correctly. */
+  async function login(username, password, memberId) {
+    if (username.trim() !== "admin123" || password !== "admin123") {
+      return "Sign-in failed: use admin123 / admin123.";
+    }
+    if (!dataReady || users.length === 0) return "Workspace data is still loading — try again in a second.";
+    const me = users.find(u => u.id === memberId && u.active)
+      || users.find(u => u.id === "gyadav@noon.com")
+      || users.find(u => u.role === "admin" && u.active)
+      || users[0];
+    localStorage.setItem("mo-user", me.id);
+    setCurrentUser(me);
+    setView("dashboard");
+    setRegionFilter(me.role === "agent" && me.region ? me.region : "all");
+    return null;
   }
 
   function logout() {
-    supabase.auth.signOut();
+    localStorage.removeItem("mo-user");
     setCurrentUser(null);
   }
 
@@ -716,7 +715,7 @@ export default function App() {
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onLogin={login} restoring={!authChecked || (!!session && !dataReady)} />;
+  if (!currentUser) return <LoginScreen onLogin={login} users={users} restoring={!dataReady} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedEmails = currentUser.role === "agent"
@@ -884,9 +883,10 @@ const LOGIN_FEATURES = [
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
-function LoginScreen({ onLogin, restoring }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+function LoginScreen({ onLogin, users, restoring }) {
+  const [username, setUsername] = useState("admin123");
+  const [password, setPassword] = useState("admin123");
+  const [memberId, setMemberId] = useState("gyadav@noon.com");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -895,7 +895,7 @@ function LoginScreen({ onLogin, restoring }) {
     if (busy) return;
     setBusy(true);
     setError("");
-    const err = await onLogin(username, password);
+    const err = await onLogin(username, password, memberId);
     if (err) setError(err);
     setBusy(false);
   }
@@ -956,26 +956,36 @@ function LoginScreen({ onLogin, restoring }) {
           <p className="intro">Login to continue to your operations workspace.</p>
 
           {error && <div className="portal-alert">{error}</div>}
-          {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Signing you in…</div>}
+          {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Loading workspace data…</div>}
 
           <form onSubmit={submit} className="portal-form">
-            <label htmlFor="login-user">noon ID</label>
+            <label htmlFor="login-user">User ID</label>
             <div className="input-shell">
               <span>ID</span>
-              <input id="login-user" type="email" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="yourname@noon.com" required />
+              <input id="login-user" type="text" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="admin123" required />
             </div>
 
             <label htmlFor="login-pass">Password</label>
             <div className="input-shell">
               <span>PW</span>
-              <input id="login-pass" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="Enter your password" required />
+              <input id="login-pass" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="admin123" required />
             </div>
-            <a className="forgot-link" href="#" onClick={e => e.preventDefault()}>Forgot password?</a>
+
+            <label htmlFor="login-member">Continue as</label>
+            <div className="input-shell">
+              <span>AS</span>
+              <select id="login-member" value={memberId} onChange={e => setMemberId(e.target.value)}
+                style={{ flex: 1, minHeight: 44, border: 0, background: "transparent", outline: "none", font: "inherit", fontWeight: 700, color: "var(--mo-ink)" }}>
+                {(users.length ? users.filter(u => u.active) : [{ id: "gyadav@noon.com", name: "Gaurav", role: "admin" }]).map(u => (
+                  <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
+                ))}
+              </select>
+            </div>
 
             <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Login to Console"} <span>-&gt;</span></button>
           </form>
 
-          <p className="support-copy">Access is limited to the noon admin team. Need access? <a href="#" onClick={e => e.preventDefault()}>Contact Gaurav</a></p>
+          <p className="support-copy">Prototype mode — shared login <strong>admin123 / admin123</strong>, no personal passwords.</p>
         </div>
       </section>
     </main>
