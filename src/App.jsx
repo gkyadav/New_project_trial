@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { supabase, rowToUser, rowToEmail, rowToDraft, rowToPayment, rowToKbCard, rowToKbRevision, rowToAudit } from "./supabase";
+import { supabase, rowToUser, rowToEmail, rowToDraft, rowToPayment, rowToKbCard, rowToKbRevision, rowToAudit, rowToPoint, rowToBotQuestion } from "./supabase";
 import {
   Inbox, Bot, ShieldCheck, BookOpen, Lock, ClipboardList, LogOut,
   CheckCircle2, XCircle, Pencil, CreditCard, GraduationCap,
   LayoutDashboard, AlertTriangle, PlusCircle, Search, Globe2, Send,
   ChevronRight, RefreshCw, ListChecks, Repeat, Sparkles, Circle, Check,
-  Users, Truck, Package, Wallet, Headphones
+  Users, Truck, Package, Wallet, Headphones, Trophy, HelpCircle, UserPlus
 } from "lucide-react";
 
 /* ---------------------------------------------------------------------- */
@@ -146,6 +146,56 @@ const STATUS_LABEL = {
   draft: "Draft", published: "Published",
 };
 
+/* Points awarded for knowledge contributions (visible on the SOP Bot tab). */
+const POINTS = { newCard: 10, mergedRevision: 5, botAnswer: 3, submitToCard: 5 };
+
+/* Knowledge card bodies are stored one point per line. Headings (lines
+   ending in ":"), numbered steps and existing bullets are kept as-is;
+   every other non-empty line gets a bullet. */
+function toBulletPoints(body) {
+  return body
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => {
+      if (/^[•\-*]\s*/.test(l)) return "• " + l.replace(/^[•\-*]\s*/, "");
+      if (/^\d+[.)]\s/.test(l) || /:$/.test(l)) return l;
+      return "• " + l;
+    })
+    .join("\n");
+}
+
+/* SOP completeness bot: heuristics that flag what a card is still missing.
+   Each gap becomes a question the team answers for points. */
+function detectGaps(card) {
+  const qs = [];
+  const body = card.body;
+  const lines = body.split("\n").map(l => l.trim()).filter(Boolean);
+  lines
+    .filter(l => /\b(TODO|TBD|to be confirmed|pending confirmation|thin evidence|working draft)\b/i.test(l))
+    .slice(0, 2)
+    .forEach(l => qs.push(`There is an open point in this SOP: "${l.replace(/^•\s*/, "")}". Can you fill in the missing detail?`));
+  if (!/cutoff|deadline|by the \d|before \d|\bby \d|payroll input/i.test(body))
+    qs.push("What are the cutoff dates / deadlines in this process, and what happens if they are missed?");
+  if (!/escalat|dispute|watchout|discrepanc/i.test(body))
+    qs.push("What is the escalation path when something goes wrong (disputes, mismatches, delayed payments)?");
+  if (!/attach|invoice|document|contract/i.test(body))
+    qs.push("Which documents and attachments are mandatory before this payment can be processed?");
+  if (!/POC|owner|responsib|admin\b/i.test(body))
+    qs.push("Who is the POC responsible for each step of this process?");
+  if (lines.length < 6)
+    qs.push("This card looks thin — can you lay out the full step-by-step process, from input collection to payment release?");
+  return qs.slice(0, 4);
+}
+
+/* The bot only accepts answers with enough substance to go into an SOP. */
+function answerLooksComplete(text) {
+  const t = text.trim();
+  const words = t.split(/\s+/).filter(Boolean);
+  const hasSpecific = /\d/.test(t) || /@/.test(t) || /[A-Z][a-z]+ [A-Z][a-z]+/.test(t);
+  return t.length >= 40 && words.length >= 8 && hasSpecific;
+}
+
 /* ---------------------------------------------------------------------- */
 
 export default function App() {
@@ -166,6 +216,8 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [kbCards, setKbCards] = useState([]);
   const [kbRevisions, setKbRevisions] = useState([]);
+  const [pointsLedger, setPointsLedger] = useState([]);
+  const [botQuestions, setBotQuestions] = useState([]);
   const [bauState, setBauState] = useState(() => {
     const init = {};
     BAU_PROCESSES.forEach(p => { init[p.id] = {}; });
@@ -214,7 +266,7 @@ export default function App() {
     if (!session) { setDataReady(false); setCurrentUser(null); return; }
     let cancelled = false;
     async function loadAll() {
-      const [u, e, d, p, k, kr, b, a] = await Promise.all([
+      const [u, e, d, p, k, kr, b, a, pl, bq] = await Promise.all([
         supabase.from("users").select("*").order("id"),
         supabase.from("emails").select("*").order("received_at", { ascending: false }),
         supabase.from("drafts").select("*").order("created_at"),
@@ -223,9 +275,11 @@ export default function App() {
         supabase.from("kb_revisions").select("*").order("created_at", { ascending: false }),
         supabase.from("bau_checks").select("*"),
         supabase.from("audit_log").select("*").order("at", { ascending: false }),
+        supabase.from("points_ledger").select("*").order("at", { ascending: false }),
+        supabase.from("bot_questions").select("*").order("created_at", { ascending: false }),
       ]);
       if (cancelled) return;
-      const failed = [u, e, d, p, k, kr, b, a].find(r => r.error);
+      const failed = [u, e, d, p, k, kr, b, a, pl, bq].find(r => r.error);
       if (failed) { pushToast("Could not load data: " + failed.error.message); return; }
       setUsers(u.data.map(rowToUser));
       setEmails(e.data.map(rowToEmail));
@@ -235,6 +289,8 @@ export default function App() {
       setKbRevisions(kr.data.map(rowToKbRevision));
       setBauState(bauStateFromRows(b.data));
       setAuditLog(a.data.map(rowToAudit));
+      setPointsLedger(pl.data.map(rowToPoint));
+      setBotQuestions(bq.data.map(rowToBotQuestion));
       setDataReady(true);
     }
     loadAll();
@@ -282,6 +338,8 @@ export default function App() {
           case "kb_cards": upsertBy(setKbCards, rowToKbCard, payload, { prepend: true }); break;
           case "kb_revisions": upsertBy(setKbRevisions, rowToKbRevision, payload, { prepend: true }); break;
           case "audit_log": upsertBy(setAuditLog, rowToAudit, payload, { prepend: true }); break;
+          case "points_ledger": upsertBy(setPointsLedger, rowToPoint, payload, { prepend: true }); break;
+          case "bot_questions": upsertBy(setBotQuestions, rowToBotQuestion, payload, { prepend: true }); break;
           case "bau_checks": {
             if (payload.eventType === "DELETE") {
               const { process_id, stage_id } = payload.old || {};
@@ -419,19 +477,31 @@ export default function App() {
     pushToast(`New cycle started for ${process.name}`);
   }
 
+  /* ---- points ---- */
+  function awardPoints(userId, userName, pts, reason, refId) {
+    const entry = {
+      id: "p" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+      userId, userName, points: pts, reason, refId: refId || null,
+      at: new Date().toISOString().slice(0, 16).replace("T", " "),
+    };
+    setPointsLedger(prev => prev.some(p => p.id === entry.id) ? prev : [entry, ...prev]);
+    dbWrite(supabase.from("points_ledger").insert({ id: entry.id, user_id: entry.userId, user_name: entry.userName, points: entry.points, reason: entry.reason, ref_id: entry.refId, at: entry.at }));
+  }
+
   /* ---- knowledge base actions ---- */
   function createCard(country, section) {
     if (!newCard.title.trim() || !newCard.body.trim()) { pushToast("Title and body are required"); return; }
     const card = {
-      id: "k" + Date.now(), title: newCard.title, body: newCard.body,
+      id: "k" + Date.now(), title: newCard.title, body: toBulletPoints(newCard.body),
       region: country, country, section, owner: currentUser.id,
       status: "draft", author: currentUser.name, updatedAt: new Date().toISOString().slice(0, 10),
     };
     setKbCards(prev => prev.some(c => c.id === card.id) ? prev : [card, ...prev]);
     dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, region: country, country, section, owner: card.owner, status: card.status, author: card.author, updated_at: card.updatedAt }));
     addAudit("Create knowledge card", `Draft created: "${card.title}" (${country.toUpperCase()} / ${section})`, country);
+    awardPoints(currentUser.id, currentUser.name, POINTS.newCard, `New knowledge card: "${card.title}"`, card.id);
     setNewCard({ title: "", body: "" });
-    pushToast(currentUser.role === "admin" ? "Draft card saved" : "Draft card saved — pending Gaurav's vetting");
+    pushToast(`+${POINTS.newCard} pts — ` + (currentUser.role === "admin" ? "draft card saved" : "draft card saved, pending Gaurav's vetting"));
   }
 
   function publishCard(card) {
@@ -447,7 +517,7 @@ export default function App() {
     if (!title.trim() || !body.trim()) { pushToast("Title and body are required"); return; }
     if (title === card.title && body === card.body) { pushToast("No changes to propose"); return; }
     const rev = {
-      id: "r" + Date.now(), cardId: card.id, title, body,
+      id: "r" + Date.now(), cardId: card.id, title, body: toBulletPoints(body),
       authorId: currentUser.id, authorName: currentUser.name, note: "",
       status: "pending", createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
       decidedAt: null, decidedBy: null,
@@ -461,12 +531,14 @@ export default function App() {
   function mergeRevision(rev) {
     const updatedAt = new Date().toISOString().slice(0, 10);
     const decidedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
-    setKbCards(prev => prev.map(c => c.id === rev.cardId ? { ...c, title: rev.title, body: rev.body, updatedAt } : c));
+    /* Merging an edit also clears any open update request on the card. */
+    setKbCards(prev => prev.map(c => c.id === rev.cardId ? { ...c, title: rev.title, body: rev.body, updatedAt, updateRequest: "", updateRequestedBy: null, updateRequestedAt: null } : c));
     setKbRevisions(prev => prev.map(r => r.id === rev.id ? { ...r, status: "merged", decidedAt, decidedBy: currentUser.name } : r));
-    dbWrite(supabase.from("kb_cards").update({ title: rev.title, body: rev.body, updated_at: updatedAt }).eq("id", rev.cardId));
+    dbWrite(supabase.from("kb_cards").update({ title: rev.title, body: rev.body, updated_at: updatedAt, update_request: "", update_requested_by: null, update_requested_at: null }).eq("id", rev.cardId));
     dbWrite(supabase.from("kb_revisions").update({ status: "merged", decided_at: decidedAt, decided_by: currentUser.name }).eq("id", rev.id));
     addAudit("Merge card revision", `Merged ${rev.authorName}'s edit into "${rev.title}"`, "-");
-    pushToast(`Merged ${rev.authorName}'s revision`);
+    awardPoints(rev.authorId, rev.authorName, POINTS.mergedRevision, `Edit merged into "${rev.title}"`, rev.id);
+    pushToast(`Merged ${rev.authorName}'s revision (+${POINTS.mergedRevision} pts to ${rev.authorName})`);
   }
 
   function rejectRevision(rev) {
@@ -475,6 +547,94 @@ export default function App() {
     dbWrite(supabase.from("kb_revisions").update({ status: "rejected", decided_at: decidedAt, decided_by: currentUser.name }).eq("id", rev.id));
     addAudit("Reject card revision", `Rejected ${rev.authorName}'s edit to "${rev.title}"`, "-");
     pushToast(`Rejected ${rev.authorName}'s revision`);
+  }
+
+  /* ---- knowledge base: assignment & update requests (admin) ---- */
+  function assignCard(card, userId) {
+    const assignee = users.find(u => u.id === userId);
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, assignedTo: userId || null } : c));
+    dbWrite(supabase.from("kb_cards").update({ assigned_to: userId || null }).eq("id", card.id));
+    addAudit("Assign knowledge card", userId ? `"${card.title}" assigned to ${assignee?.name || userId}` : `"${card.title}" unassigned`, card.country);
+    pushToast(userId ? `Card assigned to ${assignee?.name || userId}` : "Card unassigned");
+  }
+
+  function requestCardUpdate(card, note) {
+    if (!note.trim()) { pushToast("Describe what needs updating"); return; }
+    const at = new Date().toISOString().slice(0, 16).replace("T", " ");
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, updateRequest: note, updateRequestedBy: currentUser.name, updateRequestedAt: at } : c));
+    dbWrite(supabase.from("kb_cards").update({ update_request: note, update_requested_by: currentUser.name, update_requested_at: at }).eq("id", card.id));
+    addAudit("Request card update", `Update requested on "${card.title}": ${note}`, card.country);
+    pushToast("Update requested — the assignee will see it on the card");
+  }
+
+  function clearUpdateRequest(card) {
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, updateRequest: "", updateRequestedBy: null, updateRequestedAt: null } : c));
+    dbWrite(supabase.from("kb_cards").update({ update_request: "", update_requested_by: null, update_requested_at: null }).eq("id", card.id));
+    addAudit("Clear update request", `Update request cleared on "${card.title}"`, card.country);
+    pushToast("Update request cleared");
+  }
+
+  /* ---- SOP completeness bot ---- */
+  function scanForGaps() {
+    const existing = new Set(botQuestions.filter(q => q.status !== "dismissed").map(q => q.cardId + "||" + q.question));
+    const createdAt = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const created = [];
+    kbCards.forEach(card => {
+      detectGaps(card).forEach(question => {
+        const key = card.id + "||" + question;
+        if (existing.has(key)) return;
+        existing.add(key);
+        created.push({
+          id: "q" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          cardId: card.id, cardTitle: card.title, country: card.country, section: card.section,
+          question, status: "open", answer: "", answeredBy: null, answeredByName: null,
+          createdAt, answeredAt: null,
+        });
+      });
+    });
+    if (created.length === 0) { pushToast("No new gaps found — the SOPs look complete to the bot"); return; }
+    setBotQuestions(prev => [...created, ...prev]);
+    created.forEach(q => dbWrite(supabase.from("bot_questions").insert({
+      id: q.id, card_id: q.cardId, card_title: q.cardTitle, country: q.country, section: q.section,
+      question: q.question, status: q.status, created_at: q.createdAt,
+    })));
+    addAudit("SOP bot scan", `${created.length} new question${created.length > 1 ? "s" : ""} raised across the knowledge base`, "-");
+    pushToast(`SOP bot raised ${created.length} question${created.length > 1 ? "s" : ""} — answers earn points`);
+  }
+
+  function answerBotQuestion(q, text) {
+    const answeredAt = new Date().toISOString().slice(0, 16).replace("T", " ");
+    setBotQuestions(prev => prev.map(x => x.id === q.id ? { ...x, status: "answered", answer: text, answeredBy: currentUser.id, answeredByName: currentUser.name, answeredAt } : x));
+    dbWrite(supabase.from("bot_questions").update({ status: "answered", answer: text, answered_by: currentUser.id, answered_by_name: currentUser.name, answered_at: answeredAt }).eq("id", q.id));
+    addAudit("Answer SOP bot question", `Answered on "${q.cardTitle}": ${q.question}`, q.country);
+    awardPoints(currentUser.id, currentUser.name, POINTS.botAnswer, `Answered SOP bot on "${q.cardTitle}"`, q.id);
+    pushToast(`Answer accepted — +${POINTS.botAnswer} pts. Submit it to the card for +${POINTS.submitToCard} more.`);
+  }
+
+  function submitAnswerToCard(q) {
+    const card = kbCards.find(c => c.id === q.cardId);
+    if (!card) { pushToast("The card behind this question no longer exists"); return; }
+    const rev = {
+      id: "r" + Date.now(), cardId: card.id, title: card.title,
+      body: card.body + "\n" + toBulletPoints(q.answer),
+      authorId: q.answeredBy, authorName: q.answeredByName, note: `SOP bot: ${q.question}`,
+      status: "pending", createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+      decidedAt: null, decidedBy: null,
+    };
+    setKbRevisions(prev => prev.some(r => r.id === rev.id) ? prev : [rev, ...prev]);
+    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, author_id: rev.authorId, author_name: rev.authorName, note: rev.note, status: "pending", created_at: rev.createdAt }));
+    setBotQuestions(prev => prev.map(x => x.id === q.id ? { ...x, status: "submitted" } : x));
+    dbWrite(supabase.from("bot_questions").update({ status: "submitted" }).eq("id", q.id));
+    addAudit("Submit bot answer to card", `Answer on "${q.cardTitle}" submitted as a revision`, q.country);
+    awardPoints(q.answeredBy, q.answeredByName, POINTS.submitToCard, `Answer submitted to "${card.title}"`, q.id);
+    pushToast(`+${POINTS.submitToCard} pts to ${q.answeredByName} — revision awaiting Gaurav's merge`);
+  }
+
+  function dismissBotQuestion(q) {
+    setBotQuestions(prev => prev.map(x => x.id === q.id ? { ...x, status: "dismissed" } : x));
+    dbWrite(supabase.from("bot_questions").update({ status: "dismissed" }).eq("id", q.id));
+    addAudit("Dismiss SOP bot question", `Dismissed on "${q.cardTitle}": ${q.question}`, q.country);
+    pushToast("Question dismissed");
   }
 
   /* ---- access control actions ---- */
@@ -605,14 +765,20 @@ export default function App() {
           {view === "kb" && (
             <div>
               <SubTabs
-                tabs={[{ id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "bot", label: "Bot test" }]}
+                tabs={[{ id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "bot", label: "Bot test" }, { id: "sopbot", label: "SOP Bot" }]}
                 active={kbTab} onChange={setKbTab}
               />
-              {kbTab === "bot"
-                ? <KbBot cards={kbCards} currentUser={currentUser} />
-                : <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
-                    newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard}
-                    onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision} />}
+              {kbTab === "bot" && <KbBot cards={kbCards} currentUser={currentUser} />}
+              {kbTab === "sopbot" && (
+                <SopBot questions={botQuestions} users={users} currentUser={currentUser} pointsLedger={pointsLedger}
+                  onScan={scanForGaps} onAnswer={answerBotQuestion} onSubmitToCard={submitAnswerToCard} onDismiss={dismissBotQuestion} />
+              )}
+              {kbTab !== "bot" && kbTab !== "sopbot" && (
+                <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
+                  newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard}
+                  onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision}
+                  onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest} />
+              )}
             </div>
           )}
 
@@ -1234,18 +1400,21 @@ const KB_TINT_MAP = {
 };
 const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#2563eb", "#7c3aed"];
 
-function KbPlayingCard({ card, users, pendingCount, onOpen }) {
+function KbPlayingCard({ card, users, currentUser, pendingCount, onOpen }) {
   const [c1, c2] = kbTint(card);
   const owner = users.find(u => u.id === card.owner);
   const ownerName = owner ? owner.name : card.author;
   const initials = (ownerName || "?").replace(/[^A-Za-z ]/g, "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   const pip = card.section === "fulfillment" ? "FF" : card.section === "logistics" ? "LG" : (COUNTRY_LABEL[card.country] || "").toUpperCase();
+  const mine = currentUser && card.assignedTo === currentUser.id;
   return (
     <button className="kb-pcard" style={{ "--kb-c1": c1, "--kb-c2": c2 }} onClick={onOpen}>
       <span className="kb-pip kb-pip-top">{pip}</span>
       <span className="kb-pip kb-pip-bottom">{pip}</span>
       <span className="kb-pcard-badges">
         <StatusPill status={card.status} />
+        {mine && <span className="mo-pill mo-pill-neutral">Yours</span>}
+        {card.updateRequest && <span className="mo-pill mo-pill-warn">Update due</span>}
         {pendingCount > 0 && <span className="mo-pill mo-pill-warn">{pendingCount} pending</span>}
       </span>
       <span className="kb-medallion"><BookOpen size={21} /></span>
@@ -1261,9 +1430,10 @@ function KbPlayingCard({ card, users, pendingCount, onOpen }) {
 
 function KbBot({ cards, currentUser }) {
   const published = cards.filter(c => c.status === "published");
+  const draftCount = cards.length - published.length;
   const [messages, setMessages] = useState([{
     role: "bot",
-    text: `Hi ${"" + (currentUser.name || "")}! I'm the Ops KB bot. Ask me anything about payment operations and I'll answer from the team's published knowledge cards. Right now I can read ${published.length} published card${published.length === 1 ? "" : "s"} — every card you publish makes me smarter.`,
+    text: `Hi ${"" + (currentUser.name || "")}! I'm the Ops KB bot, connected live to the team knowledge base. I can read ${cards.length} card${cards.length === 1 ? "" : "s"} (${published.length} published, ${draftCount} draft) across UAE, KSA and Egypt. Ask me anything about payment operations — I'll answer with the exact points from the cards and cite my sources.`,
     sources: [],
   }]);
   const [input, setInput] = useState("");
@@ -1271,7 +1441,7 @@ function KbBot({ cards, currentUser }) {
 
   function answerFor(question) {
     const tokens = (question.toLowerCase().match(/[a-z0-9]+/g) || []).filter(t => t.length > 2);
-    const scored = published
+    const scored = cards
       .map(c => {
         const title = c.title.toLowerCase();
         const body = c.body.toLowerCase();
@@ -1280,20 +1450,27 @@ function KbBot({ cards, currentUser }) {
           if (title.includes(t)) score += 3;
           if (body.includes(t)) score += 1;
         });
+        /* Published (vetted) cards outrank drafts on ties. */
+        if (c.status === "published") score += 0.5;
         return { card: c, score };
       })
-      .filter(s => s.score > 0)
+      .filter(s => s.score >= 1)
       .sort((a, b) => b.score - a.score);
 
-    if (published.length === 0) {
-      return { text: "My knowledge base is empty right now — I have nothing to learn from yet. Add knowledge cards and get them published, and I'll start answering from them.", sources: [] };
+    if (cards.length === 0) {
+      return { text: "My knowledge base is empty right now — I have nothing to learn from yet. Add knowledge cards and I'll start answering from them.", sources: [] };
     }
     if (scored.length === 0) {
-      return { text: "I couldn't find anything in the published knowledge base about that yet. If you know the answer, add it as a knowledge card — once Gaurav publishes it, I'll be able to answer this for the whole team.", sources: [] };
+      return { text: "I couldn't find anything in the knowledge base about that yet. If you know the answer, add it as a knowledge card — every card makes me smarter. You can also check the SOP Bot tab: answering its questions fills gaps like this one.", sources: [] };
     }
     const best = scored[0].card;
+    /* Answer with the specific points that match, not the whole card. */
+    const lines = best.body.split("\n").map(l => l.trim()).filter(Boolean);
+    const hits = lines.filter(l => tokens.some(t => l.toLowerCase().includes(t)));
+    const chosen = (hits.length ? hits : lines).slice(0, 10);
+    const caveat = best.status === "draft" ? " (from a draft card — not yet vetted by Gaurav)" : "";
     return {
-      text: best.body,
+      text: `${best.title}${caveat}:\n${chosen.join("\n")}`,
       sources: scored.slice(0, 2).map(s => s.card),
     };
   }
@@ -1318,8 +1495,8 @@ function KbBot({ cards, currentUser }) {
         <div>
           <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)" }}>Ops KB Bot <span className="mo-pill mo-pill-neutral" style={{ marginLeft: 6 }}>training</span></div>
           <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
-            Reading {published.length} published card{published.length === 1 ? "" : "s"} across UAE, KSA and Egypt. Drafts don't count until Gaurav publishes them.
-            Long-term goal: enough vetted knowledge for the bot to decide without a human.
+            Connected to the knowledge base: {published.length} published + {draftCount} draft card{draftCount === 1 ? "" : "s"} across UAE, KSA and Egypt.
+            Draft answers are flagged until Gaurav publishes them. Long-term goal: enough vetted knowledge for the bot to run the process without a human.
           </div>
         </div>
       </div>
@@ -1329,7 +1506,7 @@ function KbBot({ cards, currentUser }) {
           <div key={i} className={`bot-row ${m.role === "user" ? "bot-row-user" : ""}`}>
             {m.role === "bot" && <span className="bot-avatar"><Bot size={14} /></span>}
             <div className={m.role === "user" ? "bot-bubble-user" : "bot-bubble"}>
-              <div>{m.text}</div>
+              <div style={{ whiteSpace: "pre-line" }}>{m.text}</div>
               {m.sources.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                   {m.sources.map(s => (
@@ -1357,7 +1534,146 @@ function KbBot({ cards, currentUser }) {
   );
 }
 
-function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onPropose, onMerge, onReject }) {
+/* The SOP completeness bot interrogates the knowledge base: it scans every
+   card for gaps, asks the team, and turns accepted answers into card
+   revisions. Answers earn points; the leaderboard keeps it competitive. */
+function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer, onSubmitToCard, onDismiss }) {
+  const [drafts, setDrafts] = useState({});
+  const [feedback, setFeedback] = useState({});
+  const isManager = currentUser.role === "admin";
+
+  const open = questions.filter(q => q.status === "open");
+  const answered = questions.filter(q => q.status === "answered");
+  const submitted = questions.filter(q => q.status === "submitted");
+
+  const totals = {};
+  pointsLedger.forEach(p => { totals[p.userId] = (totals[p.userId] || 0) + p.points; });
+  const board = users.filter(u => u.active).map(u => ({ user: u, pts: totals[u.id] || 0 })).sort((a, b) => b.pts - a.pts);
+  const myPts = totals[currentUser.id] || 0;
+
+  function handleAnswer(q) {
+    const text = (drafts[q.id] || "").trim();
+    if (!text) return;
+    if (!answerLooksComplete(text)) {
+      setFeedback(f => ({ ...f, [q.id]: "Almost — I need specifics before this can go into an SOP. Add names, dates, amounts or system steps (a couple of full sentences)." }));
+      return;
+    }
+    setFeedback(f => ({ ...f, [q.id]: "" }));
+    setDrafts(d => ({ ...d, [q.id]: "" }));
+    onAnswer(q, text);
+  }
+
+  return (
+    <div style={{ maxWidth: 900, margin: "14px auto 0", display: "grid", gap: 14 }}>
+      <div className="mo-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span className="kb-medallion" style={{ "--kb-c1": "#f59e0b", "--kb-c2": "#e11d48", width: 42, height: 42 }}><HelpCircle size={20} /></span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)" }}>SOP Completeness Bot</div>
+          <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
+            I read every knowledge card and assume it's incomplete until proven otherwise. I ask the questions; you answer for points; accepted answers
+            become card revisions for Gaurav to merge. When I run out of questions, the SOPs are complete enough to automate.
+          </div>
+        </div>
+        <span className="mo-pill mo-pill-success" style={{ flexShrink: 0 }}><Trophy size={11} style={{ marginRight: 4, verticalAlign: -1 }} />{myPts} pts — you</span>
+        {isManager && (
+          <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ flexShrink: 0 }} onClick={onScan}>
+            <RefreshCw size={13} style={{ marginRight: 6 }} />Scan SOPs for gaps
+          </button>
+        )}
+      </div>
+
+      {/* Leaderboard */}
+      <div className="mo-card">
+        <div style={{ fontWeight: 900, fontSize: 13.5, marginBottom: 10 }}><Trophy size={14} style={{ marginRight: 6, verticalAlign: -2, color: "var(--mo-gold)" }} />Knowledge leaderboard</div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {board.map((b, i) => (
+            <div key={b.user.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+              <span style={{ width: 22, fontWeight: 900, color: i === 0 && b.pts > 0 ? "var(--mo-gold)" : "var(--mo-muted)" }}>#{i + 1}</span>
+              <span style={{ flex: 1, fontWeight: 700 }}>{b.user.name}{b.user.id === currentUser.id && <span style={{ color: "var(--mo-muted)", fontWeight: 600 }}> (you)</span>}</span>
+              <div className="mo-progress-track" style={{ width: 160 }}>
+                <div className="mo-progress-fill" style={{ width: `${board[0].pts ? (b.pts / board[0].pts) * 100 : 0}%`, background: "linear-gradient(90deg, var(--mo-gold), var(--mo-coral))" }} />
+              </div>
+              <span style={{ fontWeight: 900, minWidth: 52, textAlign: "right" }}>{b.pts} pts</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 10 }}>
+          +{POINTS.newCard} new card · +{POINTS.mergedRevision} merged edit · +{POINTS.botAnswer} bot answer · +{POINTS.submitToCard} answer submitted to a card
+        </div>
+      </div>
+
+      {/* Open questions */}
+      <div>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "4px 0 10px" }}>
+          Open questions ({open.length})
+        </div>
+        {open.length === 0 && <EmptyState text={isManager ? "No open questions. Run a scan — if nothing comes back, the SOPs look complete." : "No open questions right now. Check back after the next scan."} />}
+        <div style={{ display: "grid", gap: 12 }}>
+          {open.map(q => (
+            <div key={q.id} className="mo-card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{q.cardTitle} · {COUNTRY_LABEL[q.country] || q.country}/{q.section}</span>
+                {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onDismiss(q)}><XCircle size={12} style={{ marginRight: 4 }} />Dismiss</button>}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #f59e0b, #e11d48)" }}><HelpCircle size={14} /></span>
+                <div className="bot-bubble" style={{ maxWidth: "100%" }}>{q.question}</div>
+              </div>
+              {feedback[q.id] && (
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
+                  <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #f59e0b, #e11d48)" }}><HelpCircle size={14} /></span>
+                  <div className="bot-bubble" style={{ maxWidth: "100%", color: "var(--mo-warn)" }}>{feedback[q.id]}</div>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <textarea className="mo-textarea" rows={2} placeholder={`Answer with specifics — earns +${POINTS.botAnswer} pts when the bot accepts it`}
+                  value={drafts[q.id] || ""} onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))} />
+                <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ alignSelf: "flex-end", flexShrink: 0 }} disabled={!(drafts[q.id] || "").trim()} onClick={() => handleAnswer(q)}>
+                  <Send size={12} style={{ marginRight: 6 }} />Answer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Answered — awaiting submission to the card */}
+      {answered.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "4px 0 10px" }}>
+            Accepted answers — ready to add to the knowledge cards ({answered.length})
+          </div>
+          <div style={{ display: "grid", gap: 12 }}>
+            {answered.map(q => (
+              <div key={q.id} className="mo-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                  <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{q.cardTitle} · {COUNTRY_LABEL[q.country] || q.country}/{q.section}</span>
+                  <span style={{ fontSize: 12, color: "var(--mo-muted)" }}>answered by <strong>{q.answeredByName}</strong> · {q.answeredAt}</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--mo-muted)", marginBottom: 4 }}>{q.question}</div>
+                <div style={{ fontSize: 13, color: "var(--mo-ink)", whiteSpace: "pre-line", background: "var(--mo-surface-alt)", borderRadius: 10, padding: "8px 10px" }}>{q.answer}</div>
+                {(isManager || q.answeredBy === currentUser.id) && (
+                  <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => onSubmitToCard(q)}>
+                    <PlusCircle size={12} style={{ marginRight: 6 }} />Submit to knowledge card (+{POINTS.submitToCard} pts)
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {submitted.length > 0 && (
+        <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
+          <CheckCircle2 size={12} style={{ marginRight: 4, verticalAlign: -2, color: "var(--mo-success)" }} />
+          {submitted.length} answer{submitted.length > 1 ? "s" : ""} submitted as card revisions — they land in the cards once Gaurav merges them.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
   const sections = KB_SECTIONS[country];
   const [section, setSection] = useState(sections ? sections[0].id : "general");
   const [q, setQ] = useState("");
@@ -1396,7 +1712,7 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
           <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mo-muted)" }}>Share what you know — the whole team sees it</span>
         </button>
         {list.map(c => (
-          <KbPlayingCard key={c.id} card={c} users={users}
+          <KbPlayingCard key={c.id} card={c} users={users} currentUser={currentUser}
             pendingCount={revisions.filter(r => r.cardId === c.id && r.status === "pending").length}
             onOpen={() => setOpenCardId(c.id)} />
         ))}
@@ -1423,7 +1739,8 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
         <div className="kb-modal-overlay" onClick={() => setOpenCardId(null)}>
           <div className="kb-modal" onClick={e => e.stopPropagation()}>
             <KbCard card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
-              isManager={isManager} onPublish={onPublish} onPropose={onPropose} onMerge={onMerge} onReject={onReject} />
+              isManager={isManager} currentUser={currentUser} onPublish={onPublish} onPropose={onPropose} onMerge={onMerge} onReject={onReject}
+              onAssign={onAssign} onRequestUpdate={onRequestUpdate} onClearUpdate={onClearUpdate} />
           </div>
         </div>
       )}
@@ -1431,12 +1748,15 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
   );
 }
 
-function KbCard({ card, revisions, users, isManager, onPublish, onPropose, onMerge, onReject }) {
+function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
   const [editing, setEditing] = useState(false);
   const [eTitle, setETitle] = useState(card.title);
   const [eBody, setEBody] = useState(card.body);
   const [showHistory, setShowHistory] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requestNote, setRequestNote] = useState("");
   const owner = users.find(u => u.id === card.owner);
+  const assignee = users.find(u => u.id === card.assignedTo);
   const pending = revisions.filter(r => r.status === "pending");
   const history = revisions.filter(r => r.status !== "pending");
 
@@ -1450,9 +1770,19 @@ function KbCard({ card, revisions, users, isManager, onPublish, onPropose, onMer
             <RegionDot region={card.country} />
             <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{card.title}</span>
             <StatusPill status={card.status} />
+            {assignee && <span className="mo-pill mo-pill-neutral">Assigned: {assignee.name}</span>}
             {pending.length > 0 && <span className="mo-pill mo-pill-warn">{pending.length} pending change{pending.length > 1 ? "s" : ""}</span>}
           </div>
-          <div style={{ fontSize: 13, color: "var(--mo-ink)", maxWidth: 640 }}>{card.body}</div>
+          {card.updateRequest && (
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", fontSize: 12.5 }}>
+              <span><AlertTriangle size={12} style={{ marginRight: 6, verticalAlign: -1, color: "var(--mo-warn)" }} />
+                <strong>Update requested</strong> by {card.updateRequestedBy} · {card.updateRequestedAt}: {card.updateRequest}
+                {card.assignedTo === currentUser?.id && <em> — propose an edit below; it clears when merged.</em>}
+              </span>
+              {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onClearUpdate(card)}>Clear</button>}
+            </div>
+          )}
+          <div style={{ fontSize: 13, color: "var(--mo-ink)", maxWidth: 640, whiteSpace: "pre-line" }}>{card.body}</div>
           <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>
             Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
           </div>
@@ -1461,12 +1791,30 @@ function KbCard({ card, revisions, users, isManager, onPublish, onPropose, onMer
           {card.status === "draft" && isManager && (
             <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(card)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
           )}
+          {isManager && (
+            <select className="mo-select" value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value)} title="Assign this card to a team member">
+              <option value="">Assign to…</option>
+              {users.filter(u => u.active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
+          {isManager && !card.updateRequest && (
+            <button className="mo-btn mo-btn-sm" onClick={() => setRequesting(r => !r)}><HelpCircle size={12} style={{ marginRight: 6 }} />{requesting ? "Cancel request" : "Request update"}</button>
+          )}
           <button className="mo-btn mo-btn-sm" onClick={() => (editing ? setEditing(false) : startEdit())}><Pencil size={12} style={{ marginRight: 6 }} />{editing ? "Cancel edit" : "Propose edit"}</button>
           {history.length > 0 && (
             <button className="mo-btn mo-btn-sm" onClick={() => setShowHistory(h => !h)}><ListChecks size={12} style={{ marginRight: 6 }} />History ({history.length})</button>
           )}
         </div>
       </div>
+
+      {requesting && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)" }}>
+          <textarea className="mo-textarea" rows={2} placeholder={`What should ${assignee ? assignee.name : "the assignee"} update on this card?`} value={requestNote} onChange={e => setRequestNote(e.target.value)} style={{ marginBottom: 8 }} />
+          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onRequestUpdate(card, requestNote); setRequesting(false); setRequestNote(""); }}>
+            <Send size={12} style={{ marginRight: 6 }} />Send update request
+          </button>
+        </div>
+      )}
 
       {editing && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)" }}>
@@ -1493,8 +1841,9 @@ function KbCard({ card, revisions, users, isManager, onPublish, onPropose, onMer
                   <span className="mo-pill mo-pill-warn">Awaiting Gaurav</span>
                 )}
               </div>
+              {r.note && <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 4 }}><HelpCircle size={11} style={{ marginRight: 4, verticalAlign: -1 }} />{r.note}</div>}
               {r.title !== card.title && <div style={{ fontSize: 12.5, marginBottom: 4 }}><span style={{ color: "var(--mo-muted)" }}>Title → </span><strong>{r.title}</strong></div>}
-              <div style={{ fontSize: 12.5, color: "var(--mo-ink)" }}>{r.body}</div>
+              <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{r.body}</div>
             </div>
           ))}
         </div>
@@ -1577,7 +1926,8 @@ function AccessControl({ users, onToggle }) {
               ["Adhoc inbox", "Own region, assign & draft", "All regions, view only", "All regions, view only"],
               ["AI review queue", "No access", "Approve / edit / reject", "Approve / edit / reject"],
               ["Payment status", "Own region, view only", "All regions, view only", "All regions, edit"],
-              ["Knowledge cards", "Create drafts", "Create drafts", "Create drafts, publish"],
+              ["Knowledge cards", "Create drafts, propose edits", "Create drafts, propose edits", "Create, publish, assign, request updates"],
+              ["SOP bot & points", "Answer questions, earn points", "Answer questions, earn points", "Scan for gaps, dismiss questions"],
               ["Access control", "No access", "No access", "Full access"],
               ["Audit log", "No access", "View only", "View only"],
             ].map(row => (
@@ -1829,7 +2179,7 @@ body {
 .kb-pip-bottom { bottom: 10px; right: 12px; transform: rotate(180deg); }
 .kb-medallion { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; box-shadow: 0 12px 26px rgba(79,70,229,0.35); flex-shrink: 0; }
 .kb-pcard-title { font-weight: 900; font-size: 14px; line-height: 1.25; color: var(--mo-ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.kb-pcard-body { font-size: 11.5px; line-height: 1.45; color: var(--mo-muted); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-pcard-body { font-size: 11.5px; line-height: 1.45; color: var(--mo-muted); font-weight: 600; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 .kb-pcard-foot { margin-top: auto; display: flex; align-items: center; gap: 7px; max-width: 100%; }
 .kb-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; font-size: 10px; font-weight: 900; flex-shrink: 0; }
 .kb-owner-name { font-size: 11.5px; font-weight: 800; color: var(--mo-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
