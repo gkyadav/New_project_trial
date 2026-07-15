@@ -703,7 +703,7 @@ export default function App() {
           {view === "kb" && (
             <div>
               <SubTabs
-                tabs={[{ id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "bot", label: "Bot test" }, { id: "sopbot", label: "SOP Bot" }]}
+                tabs={[{ id: "global", label: "Global Policy" }, { id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "bot", label: "Bot test" }, { id: "sopbot", label: "SOP Bot" }]}
                 active={kbTab} onChange={setKbTab}
               />
               {kbTab === "bot" && <KbBot cards={kbCards} currentUser={currentUser} />}
@@ -1022,7 +1022,7 @@ function PaymentStatus({ payments, currentUser, onChange }) {
 
 const KB_SECTION_TABS = [{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }];
 const KB_SECTIONS = { uae: KB_SECTION_TABS, ksa: KB_SECTION_TABS, egypt: KB_SECTION_TABS };
-const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt" };
+const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt", global: "Global" };
 
 const KB_TINT_MAP = {
   "uae/fulfillment": ["#2563eb", "#7c3aed"],
@@ -1031,6 +1031,7 @@ const KB_TINT_MAP = {
   "ksa/logistics": ["#16a34a", "#0d9488"],
   "egypt/fulfillment": ["#ec4899", "#7c3aed"],
   "egypt/logistics": ["#f43f5e", "#f97316"],
+  "global/baseline": ["#475569", "#1e293b"],
 };
 const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#2563eb", "#7c3aed"];
 
