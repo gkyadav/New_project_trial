@@ -410,6 +410,14 @@ export default function App() {
     return error ? "Incorrect or expired code — request a new one." : null;
   }
 
+  /* Temporary stopgap while OTP email delivery is being fixed (Supabase
+     Site URL / template). Real per-user Supabase Auth session — RLS and
+     team-only access are unaffected. Remove once OTP is confirmed working. */
+  async function loginWithTempPassword(email, password) {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    return error ? "Sign-in failed: incorrect noon email or temporary password." : null;
+  }
+
   function logout() {
     supabase.auth.signOut();
     setCurrentUser(null);
@@ -650,7 +658,7 @@ export default function App() {
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onRequestOtp={requestOtp} onVerifyOtp={verifyOtp} restoring={!authChecked || (!!session && !dataReady)} />;
+  if (!currentUser) return <LoginScreen onRequestOtp={requestOtp} onVerifyOtp={verifyOtp} onTempPassword={loginWithTempPassword} restoring={!authChecked || (!!session && !dataReady)} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedPayments = currentUser.role === "agent"
@@ -774,10 +782,11 @@ const LOGIN_FEATURES = [
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
-function LoginScreen({ onRequestOtp, onVerifyOtp, restoring }) {
+function LoginScreen({ onRequestOtp, onVerifyOtp, onTempPassword, restoring }) {
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -811,6 +820,16 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, restoring }) {
     const err = await onRequestOtp(email);
     if (err) setError(err);
     else setNotice(`New code sent to ${email.trim()}.`);
+    setBusy(false);
+  }
+
+  async function submitTempPassword(e) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    const err = await onTempPassword(email, tempPassword);
+    if (err) setError(err);
     setBusy(false);
   }
 
@@ -873,7 +892,7 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, restoring }) {
           {!error && notice && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>{notice}</div>}
           {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Signing you in…</div>}
 
-          {step === "email" ? (
+          {step === "email" && (
             <form onSubmit={sendCode} className="portal-form">
               <label htmlFor="login-email">Official noon email</label>
               <div className="input-shell">
@@ -883,7 +902,9 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, restoring }) {
 
               <button type="submit" disabled={busy}>{busy ? "Sending code…" : "Send verification code"} <span>-&gt;</span></button>
             </form>
-          ) : (
+          )}
+
+          {step === "code" && (
             <form onSubmit={submitCode} className="portal-form">
               <label htmlFor="login-code">6-digit code</label>
               <div className="input-shell">
@@ -899,6 +920,32 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, restoring }) {
             </form>
           )}
 
+          {step === "temp" && (
+            <form onSubmit={submitTempPassword} className="portal-form">
+              <label htmlFor="login-email-temp">Official noon email</label>
+              <div className="input-shell">
+                <span>ID</span>
+                <input id="login-email-temp" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" placeholder="yourname@noon.com" required />
+              </div>
+              <label htmlFor="login-temp-pw">Temporary password</label>
+              <div className="input-shell">
+                <span>PW</span>
+                <input id="login-temp-pw" type="password" value={tempPassword} onChange={e => setTempPassword(e.target.value)} autoComplete="current-password" placeholder="Ask Gaurav" required />
+              </div>
+
+              <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"} <span>-&gt;</span></button>
+            </form>
+          )}
+
+          {step !== "temp" ? (
+            <p className="support-copy">
+              Email trouble? <a href="#" onClick={e => { e.preventDefault(); setStep("temp"); setError(""); setNotice(""); }}>Use the temporary password</a> while OTP delivery is being fixed.
+            </p>
+          ) : (
+            <p className="support-copy">
+              <a href="#" onClick={e => { e.preventDefault(); setStep("email"); setError(""); setNotice(""); }}>Back to email code sign-in</a>
+            </p>
+          )}
           <p className="support-copy">Access is limited to noon.com team members added by Gaurav. New here? Ask Gaurav to add your noon ID first.</p>
         </div>
       </section>
