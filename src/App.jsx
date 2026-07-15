@@ -224,6 +224,8 @@ function answerLooksComplete(text) {
 /* ---------------------------------------------------------------------- */
 
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("bau");
   const [kbTab, setKbTab] = useState("uae");
@@ -271,9 +273,16 @@ export default function App() {
     return init;
   }
 
-  /* Initial load: hydrate all state from Supabase on mount (no auth —
-     prototype mode uses a shared in-app login instead). */
+  /* Auth session: restore on load, track changes. */
   useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthChecked(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  /* Initial load: hydrate all state from Supabase once signed in. */
+  useEffect(() => {
+    if (!session) { setDataReady(false); setCurrentUser(null); return; }
     let cancelled = false;
     async function loadAll() {
       const [u, e, d, p, k, kr, b, a, pl, bq] = await Promise.all([
@@ -305,22 +314,27 @@ export default function App() {
     }
     loadAll();
     return () => { cancelled = true; };
-  }, []);
+  }, [session?.user?.email]);
 
-  /* Restore the last chosen identity across reloads. */
+  /* Resolve the signed-in auth account to a team member row. */
   useEffect(() => {
-    if (!dataReady || currentUser) return;
-    const saved = localStorage.getItem("mo-user");
-    if (!saved) return;
-    const me = users.find(u => u.id === saved && u.active);
-    if (me) {
-      setCurrentUser(me);
+    if (!session || !dataReady || users.length === 0) return;
+    const me = users.find(u => u.id === session.user.email);
+    if (!me || !me.active) {
+      supabase.auth.signOut();
+      pushToast("This noon ID is not authorized for the Ops Console. Ask Gaurav to add you as a team member.");
+      return;
+    }
+    setCurrentUser(prev => (prev?.id === me.id ? prev : me));
+    if (!currentUser) {
+      setView("bau");
       setRegionFilter(me.role === "agent" && me.region ? me.region : "all");
     }
-  }, [dataReady, users]);
+  }, [session, dataReady, users]);
 
   /* Realtime: apply changes made by other users as they happen. */
   useEffect(() => {
+    if (!session) return;
     function upsertBy(setList, mapRow, payload, { prepend = false } = {}) {
       if (payload.eventType === "DELETE") {
         const oldId = payload.old?.id;
@@ -368,7 +382,7 @@ export default function App() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [session?.user?.email]);
 
   function addAudit(action, detail, region) {
     const entry = {
@@ -380,27 +394,38 @@ export default function App() {
     dbWrite(supabase.from("audit_log").insert({ id: entry.id, at: entry.at, actor: entry.actor, action: entry.action, detail: entry.detail, region: entry.region }));
   }
 
-  /* Prototype login: shared credentials, no auth service. Pick who you
-     are so cards, points and approvals are attributed correctly. */
-  async function login(username, password, memberId) {
-    if (username.trim() !== "admin123" || password !== "admin123") {
-      return "Sign-in failed: use admin123 / admin123.";
-    }
-    if (!dataReady || users.length === 0) return "Workspace data is still loading — try again in a second.";
-    const me = users.find(u => u.id === memberId && u.active)
-      || users.find(u => u.id === "gyadav@noon.com")
-      || users.find(u => u.role === "admin" && u.active)
-      || users[0];
-    localStorage.setItem("mo-user", me.id);
-    setCurrentUser(me);
-    setView("bau");
-    setRegionFilter(me.role === "agent" && me.region ? me.region : "all");
-    return null;
+  /* Email OTP sign-in: no passwords. A code is emailed to the noon ID;
+     shouldCreateUser stays true so a newly-added team member's first
+     login provisions their auth account automatically — access itself
+     is still gated by the users-table + RLS check above, not by this. */
+  async function requestOtp(email) {
+    const trimmed = email.trim().toLowerCase();
+    if (!/^[^\s@]+@noon\.com$/.test(trimmed)) return "Use your official noon.com email address.";
+    const { error } = await supabase.auth.signInWithOtp({ email: trimmed, options: { shouldCreateUser: true } });
+    return error ? "Could not send the code: " + error.message : null;
+  }
+
+  async function verifyOtp(email, token) {
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token: token.trim(), type: "email" });
+    return error ? "Incorrect or expired code — request a new one." : null;
   }
 
   function logout() {
-    localStorage.removeItem("mo-user");
+    supabase.auth.signOut();
     setCurrentUser(null);
+  }
+
+  /* ---- admin: onboard a new team member (their first OTP login self-provisions auth) ---- */
+  function addTeamMember({ id, name, title, role, regions }) {
+    const trimmedId = id.trim().toLowerCase();
+    if (!/^[^\s@]+@noon\.com$/.test(trimmedId)) { pushToast("Team member ID must be an official noon.com email address"); return; }
+    if (!name.trim()) { pushToast("Name is required"); return; }
+    if (users.some(u => u.id === trimmedId)) { pushToast("A team member with that noon ID already exists"); return; }
+    const user = { id: trimmedId, name: name.trim(), role, region: regions[0] || null, active: true, title: title.trim(), regions };
+    setUsers(prev => [...prev, user]);
+    dbWrite(supabase.from("users").insert({ id: user.id, name: user.name, role: user.role, region: user.region, active: true, title: user.title, regions: user.regions }));
+    addAudit("Add team member", `${user.name} (${user.id}) added as ${role}`, "-");
+    pushToast(`${user.name} added — they can sign in with their noon email once you share the console link`);
   }
 
   /* ---- payment actions (admin only, outside BAU checklist — direct override) ---- */
@@ -625,7 +650,7 @@ export default function App() {
     pushToast(`${user.name} is now ${!user.active ? "active" : "inactive"}`);
   }
 
-  if (!currentUser) return <LoginScreen onLogin={login} users={users} restoring={!dataReady} />;
+  if (!currentUser) return <LoginScreen onRequestOtp={requestOtp} onVerifyOtp={verifyOtp} restoring={!authChecked || (!!session && !dataReady)} />;
 
   const visibleNav = NAV.filter(n => n.roles.includes(currentUser.role));
   const scopedPayments = currentUser.role === "agent"
@@ -726,7 +751,7 @@ export default function App() {
                 tabs={[...(currentUser.role === "admin" ? [{ id: "access", label: "Access control" }] : []), { id: "audit", label: "Audit log" }]}
                 active={adminTab} onChange={setAdminTab}
               />
-              {adminTab === "access" && currentUser.role === "admin" && <AccessControl users={users} onToggle={toggleUserActive} />}
+              {adminTab === "access" && currentUser.role === "admin" && <AccessControl users={users} onToggle={toggleUserActive} onAddUser={addTeamMember} />}
               {adminTab === "audit" && <AuditLogView entries={auditLog} users={users} filters={auditFilters} setFilters={setAuditFilters} />}
             </div>
           )}
@@ -749,20 +774,43 @@ const LOGIN_FEATURES = [
   { cls: "pink", tag: "AL", title: "Audit Log", sub: "Every action tracked and traceable" },
 ];
 
-function LoginScreen({ onLogin, users, restoring }) {
-  const [username, setUsername] = useState("admin123");
-  const [password, setPassword] = useState("admin123");
-  const [memberId, setMemberId] = useState("gyadav@noon.com");
+function LoginScreen({ onRequestOtp, onVerifyOtp, restoring }) {
+  const [step, setStep] = useState("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  async function submit(e) {
+  async function sendCode(e) {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
-    const err = await onLogin(username, password, memberId);
+    const err = await onRequestOtp(email);
     if (err) setError(err);
+    else { setStep("code"); setNotice(`Code sent to ${email.trim()} — check your inbox.`); }
+    setBusy(false);
+  }
+
+  async function submitCode(e) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    const err = await onVerifyOtp(email, code);
+    if (err) setError(err);
+    setBusy(false);
+  }
+
+  async function resend() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const err = await onRequestOtp(email);
+    if (err) setError(err);
+    else setNotice(`New code sent to ${email.trim()}.`);
     setBusy(false);
   }
 
@@ -822,36 +870,36 @@ function LoginScreen({ onLogin, users, restoring }) {
           <p className="intro">Login to continue to your operations workspace.</p>
 
           {error && <div className="portal-alert">{error}</div>}
-          {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Loading workspace data…</div>}
+          {!error && notice && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>{notice}</div>}
+          {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Signing you in…</div>}
 
-          <form onSubmit={submit} className="portal-form">
-            <label htmlFor="login-user">User ID</label>
-            <div className="input-shell">
-              <span>ID</span>
-              <input id="login-user" type="text" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="admin123" required />
-            </div>
+          {step === "email" ? (
+            <form onSubmit={sendCode} className="portal-form">
+              <label htmlFor="login-email">Official noon email</label>
+              <div className="input-shell">
+                <span>ID</span>
+                <input id="login-email" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" placeholder="yourname@noon.com" required />
+              </div>
 
-            <label htmlFor="login-pass">Password</label>
-            <div className="input-shell">
-              <span>PW</span>
-              <input id="login-pass" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="admin123" required />
-            </div>
+              <button type="submit" disabled={busy}>{busy ? "Sending code…" : "Send verification code"} <span>-&gt;</span></button>
+            </form>
+          ) : (
+            <form onSubmit={submitCode} className="portal-form">
+              <label htmlFor="login-code">6-digit code</label>
+              <div className="input-shell">
+                <span>OTP</span>
+                <input id="login-code" type="text" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value)} placeholder="123456" required />
+              </div>
 
-            <label htmlFor="login-member">Continue as</label>
-            <div className="input-shell">
-              <span>AS</span>
-              <select id="login-member" value={memberId} onChange={e => setMemberId(e.target.value)}
-                style={{ flex: 1, minHeight: 44, border: 0, background: "transparent", outline: "none", font: "inherit", fontWeight: 700, color: "var(--mo-ink)" }}>
-                {(users.length ? users.filter(u => u.active) : [{ id: "gyadav@noon.com", name: "Gaurav", role: "admin" }]).map(u => (
-                  <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
-                ))}
-              </select>
-            </div>
+              <button type="submit" disabled={busy}>{busy ? "Verifying…" : "Verify & sign in"} <span>-&gt;</span></button>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                <button type="button" className="sso-button" style={{ width: "auto", padding: "6px 12px", fontSize: 12.5 }} onClick={() => { setStep("email"); setCode(""); setError(""); setNotice(""); }}>Use a different email</button>
+                <button type="button" className="sso-button" style={{ width: "auto", padding: "6px 12px", fontSize: 12.5 }} disabled={busy} onClick={resend}>Resend code</button>
+              </div>
+            </form>
+          )}
 
-            <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Login to Console"} <span>-&gt;</span></button>
-          </form>
-
-          <p className="support-copy">Prototype mode — shared login <strong>admin123 / admin123</strong>, no personal passwords.</p>
+          <p className="support-copy">Access is limited to noon.com team members added by Gaurav. New here? Ask Gaurav to add your noon ID first.</p>
         </div>
       </section>
     </main>
@@ -1398,10 +1446,14 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
   return (
     <div className="mo-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
             <RegionDot region={card.country} />
-            <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{card.title}</span>
+            {editing ? (
+              <input className="mo-input" style={{ maxWidth: 420, fontWeight: 900 }} value={eTitle} onChange={e => setETitle(e.target.value)} />
+            ) : (
+              <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{card.title}</span>
+            )}
             <StatusPill status={card.status} />
             {assignee && <span className="mo-pill mo-pill-neutral">Assigned: {assignee.name}</span>}
             {pending.length > 0 && <span className="mo-pill mo-pill-warn">{pending.length} pending change{pending.length > 1 ? "s" : ""}</span>}
@@ -1410,41 +1462,57 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", fontSize: 12.5 }}>
               <span><AlertTriangle size={12} style={{ marginRight: 6, verticalAlign: -1, color: "var(--mo-warn)" }} />
                 <strong>Update requested</strong> by {card.updateRequestedBy} · {card.updateRequestedAt}: {card.updateRequest}
-                {card.assignedTo === currentUser?.id && <em> — propose an edit below; it clears when merged.</em>}
+                {card.assignedTo === currentUser?.id && <em> — click Edit below; it clears when your edit is merged.</em>}
               </span>
               {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onClearUpdate(card)}>Clear</button>}
             </div>
           )}
-          <div style={{ display: "grid", gap: 8, maxWidth: 640, marginTop: 4 }}>
-            {cardSteps(card).map((s, i) => (
-              <div key={i} className="kb-step">
-                <div className="kb-step-head">
-                  <span className="kb-step-num">Step {i + 1}</span>
-                  <strong style={{ fontSize: 13 }}>{s.name}</strong>
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
+
+          {editing ? (
+            <div style={{ maxWidth: 640, marginTop: 4 }}>
+              <StepEditor steps={eSteps} onChange={setESteps} />
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onPropose(card, eTitle, eSteps); setEditing(false); }}>
+                  <Send size={12} style={{ marginRight: 6 }} />Save
+                </button>
+                <button className="mo-btn mo-btn-sm" onClick={() => setEditing(false)}>Cancel</button>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8, maxWidth: 640, marginTop: 4 }}>
+              {cardSteps(card).map((s, i) => (
+                <div key={i} className="kb-step">
+                  <div className="kb-step-head">
+                    <span className="kb-step-num">Step {i + 1}</span>
+                    <strong style={{ fontSize: 13 }}>{s.name}</strong>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>
             Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
-          {card.status === "draft" && isManager && (
+          {card.status === "draft" && isManager && !editing && (
             <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(card)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
           )}
-          {isManager && (
+          {isManager && !editing && (
             <select className="mo-select" value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value)} title="Assign this card to a team member">
               <option value="">Assign to…</option>
               {users.filter(u => u.active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
-          {isManager && !card.updateRequest && (
+          {isManager && !card.updateRequest && !editing && (
             <button className="mo-btn mo-btn-sm" onClick={() => setRequesting(r => !r)}><HelpCircle size={12} style={{ marginRight: 6 }} />{requesting ? "Cancel request" : "Request update"}</button>
           )}
-          <button className="mo-btn mo-btn-sm" onClick={() => (editing ? setEditing(false) : startEdit())}><Pencil size={12} style={{ marginRight: 6 }} />{editing ? "Cancel edit" : "Propose edit"}</button>
-          {history.length > 0 && (
+          {!editing && (
+            <button className="mo-btn mo-btn-sm" onClick={startEdit}><Pencil size={12} style={{ marginRight: 6 }} />Edit</button>
+          )}
+          {history.length > 0 && !editing && (
             <button className="mo-btn mo-btn-sm" onClick={() => setShowHistory(h => !h)}><ListChecks size={12} style={{ marginRight: 6 }} />History ({history.length})</button>
           )}
         </div>
@@ -1455,16 +1523,6 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
           <textarea className="mo-textarea" rows={2} placeholder={`What should ${assignee ? assignee.name : "the assignee"} update on this card?`} value={requestNote} onChange={e => setRequestNote(e.target.value)} style={{ marginBottom: 8 }} />
           <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onRequestUpdate(card, requestNote); setRequesting(false); setRequestNote(""); }}>
             <Send size={12} style={{ marginRight: 6 }} />Send update request
-          </button>
-        </div>
-      )}
-
-      {editing && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)" }}>
-          <input className="mo-input" value={eTitle} onChange={e => setETitle(e.target.value)} style={{ marginBottom: 10 }} />
-          <StepEditor steps={eSteps} onChange={setESteps} />
-          <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => { onPropose(card, eTitle, eSteps); setEditing(false); }}>
-            <Send size={12} style={{ marginRight: 6 }} />Submit for merge
           </button>
         </div>
       )}
@@ -1520,19 +1578,61 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
   );
 }
 
-function AccessControl({ users, onToggle }) {
+function AccessControl({ users, onToggle, onAddUser }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ id: "", name: "", title: "", role: "agent", regions: [] });
+
+  function toggleRegion(r) {
+    setForm(f => ({ ...f, regions: f.regions.includes(r) ? f.regions.filter(x => x !== r) : [...f.regions, r] }));
+  }
+
+  function submit() {
+    onAddUser(form);
+    setForm({ id: "", name: "", title: "", role: "agent", regions: [] });
+    setShowForm(false);
+  }
+
   return (
     <div>
       <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0" }}>
-        Roles and permissions are fixed rules, not editable at runtime — this keeps access control predictable and auditable. You can only activate or deactivate accounts here.
+        Roles are fixed rules, not editable at runtime — this keeps access predictable and auditable. Only official noon.com emails can sign in;
+        new team members verify with a one-time code sent to their inbox, no password to manage.
       </p>
+
+      <div style={{ marginBottom: 14 }}>
+        <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => setShowForm(f => !f)}>
+          <PlusCircle size={13} style={{ marginRight: 6 }} />{showForm ? "Cancel" : "Add team member"}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="mo-card" style={{ marginBottom: 16, display: "grid", gap: 8, maxWidth: 480 }}>
+          <input className="mo-input" placeholder="Official noon email (e.g. name@noon.com)" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} />
+          <input className="mo-input" placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          <input className="mo-input" placeholder="Title (e.g. Performance Admin)" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+          <select className="mo-select" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+            <option value="agent">Agent</option>
+            <option value="reviewer">Reviewer</option>
+            <option value="admin">Admin</option>
+          </select>
+          <div style={{ display: "flex", gap: 12, fontSize: 12.5, fontWeight: 700 }}>
+            {Object.values(REGIONS).map(r => (
+              <label key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={form.regions.includes(r.id)} onChange={() => toggleRegion(r.id)} />{r.short}
+              </label>
+            ))}
+          </div>
+          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={submit}><PlusCircle size={13} style={{ marginRight: 6 }} />Save team member</button>
+        </div>
+      )}
+
       <div className="mo-table-wrap" style={{ marginBottom: 24 }}>
         <table className="mo-table">
           <thead><tr><th>Name</th><th>Role</th><th>Region</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{u.name}</td>
+                <td style={{ fontWeight: 800, color: "var(--mo-ink)" }}>{u.name}<div className="mo-mono" style={{ fontSize: 11, color: "var(--mo-muted)", fontWeight: 600 }}>{u.id}</div></td>
                 <td style={{ textTransform: "capitalize" }}>{u.role}</td>
                 <td>{u.region ? <RegionDot region={u.region} /> : <span style={{ color: "var(--mo-muted)", fontSize: 12.5 }}>All regions</span>}</td>
                 <td><span className={`mo-pill ${u.active ? "mo-pill-success" : "mo-pill-danger"}`}>{u.active ? "Active" : "Inactive"}</span></td>
