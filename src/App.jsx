@@ -335,16 +335,29 @@ export default function App() {
   /* Realtime: apply changes made by other users as they happen. */
   useEffect(() => {
     if (!session) return;
-    function upsertBy(setList, mapRow, payload, { prepend = false } = {}) {
+    /* stickyKeys: fields that should never be blanked by an update payload
+       that omits them (belt-and-suspenders alongside REPLICA IDENTITY FULL
+       — Postgres logical replication can otherwise omit unchanged TOASTed
+       columns like long text/jsonb from an UPDATE's "new" record). */
+    function upsertBy(setList, mapRow, payload, { prepend = false, stickyKeys = [] } = {}) {
       if (payload.eventType === "DELETE") {
         const oldId = payload.old?.id;
         if (oldId) setList(prev => prev.filter(x => x.id !== oldId));
         return;
       }
       const item = mapRow(payload.new);
-      setList(prev => prev.some(x => x.id === item.id)
-        ? prev.map(x => x.id === item.id ? item : x)
-        : (prepend ? [item, ...prev] : [...prev, item]));
+      setList(prev => {
+        const idx = prev.findIndex(x => x.id === item.id);
+        if (idx === -1) return prepend ? [item, ...prev] : [...prev, item];
+        const merged = { ...item };
+        stickyKeys.forEach(k => {
+          const empty = item[k] == null || item[k] === "" || (Array.isArray(item[k]) && item[k].length === 0);
+          if (empty && prev[idx][k]) merged[k] = prev[idx][k];
+        });
+        const next = [...prev];
+        next[idx] = merged;
+        return next;
+      });
     }
 
     const channel = supabase.channel("ops-console-sync")
@@ -354,8 +367,8 @@ export default function App() {
           case "emails": upsertBy(setEmails, rowToEmail, payload); break;
           case "drafts": upsertBy(setDrafts, rowToDraft, payload); break;
           case "payments": upsertBy(setPayments, rowToPayment, payload); break;
-          case "kb_cards": upsertBy(setKbCards, rowToKbCard, payload, { prepend: true }); break;
-          case "kb_revisions": upsertBy(setKbRevisions, rowToKbRevision, payload, { prepend: true }); break;
+          case "kb_cards": upsertBy(setKbCards, rowToKbCard, payload, { prepend: true, stickyKeys: ["body", "steps"] }); break;
+          case "kb_revisions": upsertBy(setKbRevisions, rowToKbRevision, payload, { prepend: true, stickyKeys: ["body", "steps"] }); break;
           case "audit_log": upsertBy(setAuditLog, rowToAudit, payload, { prepend: true }); break;
           case "points_ledger": upsertBy(setPointsLedger, rowToPoint, payload, { prepend: true }); break;
           case "bot_questions": upsertBy(setBotQuestions, rowToBotQuestion, payload, { prepend: true }); break;
@@ -518,6 +531,25 @@ export default function App() {
     dbWrite(supabase.from("kb_cards").update({ status: "published", updated_at: updatedAt }).eq("id", card.id));
     addAudit("Publish knowledge card", `Published: "${card.title}"`, card.country);
     pushToast("Card published to knowledge base");
+  }
+
+  function unpublishCard(card) {
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, status: "draft", updatedAt } : c));
+    dbWrite(supabase.from("kb_cards").update({ status: "draft", updated_at: updatedAt }).eq("id", card.id));
+    addAudit("Unpublish knowledge card", `Reverted to draft: "${card.title}"`, card.country);
+    pushToast("Card reverted to draft");
+  }
+
+  /* Deleting a card cascades to its revisions and bot questions (DB-level
+     ON DELETE CASCADE) so nothing is left orphaned. */
+  function deleteCard(card) {
+    setKbCards(prev => prev.filter(c => c.id !== card.id));
+    setKbRevisions(prev => prev.filter(r => r.cardId !== card.id));
+    setBotQuestions(prev => prev.filter(q => q.cardId !== card.id));
+    dbWrite(supabase.from("kb_cards").delete().eq("id", card.id));
+    addAudit("Delete knowledge card", `Deleted: "${card.title}"`, card.country);
+    pushToast(`"${card.title}" deleted`);
   }
 
   /* ---- knowledge base: git-style revisions ---- */
@@ -746,7 +778,7 @@ export default function App() {
               )}
               {kbTab !== "bot" && kbTab !== "sopbot" && (
                 <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
-                  newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard}
+                  newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
                   onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision}
                   onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest} />
               )}
@@ -1401,7 +1433,7 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
   );
 }
 
-function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
+function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
   const sections = KB_SECTIONS[country];
   const [section, setSection] = useState(sections ? sections[0].id : "general");
   const [q, setQ] = useState("");
@@ -1467,7 +1499,9 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
         <div className="kb-modal-overlay" onClick={() => setOpenCardId(null)}>
           <div className="kb-modal" onClick={e => e.stopPropagation()}>
             <KbCard card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
-              isManager={isManager} currentUser={currentUser} onPublish={onPublish} onPropose={onPropose} onMerge={onMerge} onReject={onReject}
+              isManager={isManager} currentUser={currentUser} onPublish={onPublish} onUnpublish={onUnpublish}
+              onDelete={c => { onDelete(c); setOpenCardId(null); }}
+              onPropose={onPropose} onMerge={onMerge} onReject={onReject}
               onAssign={onAssign} onRequestUpdate={onRequestUpdate} onClearUpdate={onClearUpdate} />
           </div>
         </div>
@@ -1476,13 +1510,14 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
   );
 }
 
-function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
+function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onUnpublish, onDelete, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
   const [editing, setEditing] = useState(false);
   const [eTitle, setETitle] = useState(card.title);
   const [eSteps, setESteps] = useState(cardSteps(card));
   const [showHistory, setShowHistory] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requestNote, setRequestNote] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const owner = users.find(u => u.id === card.owner);
   const assignee = users.find(u => u.id === card.assignedTo);
   const pending = revisions.filter(r => r.status === "pending");
@@ -1547,6 +1582,9 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
           {card.status === "draft" && isManager && !editing && (
             <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(card)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
           )}
+          {card.status === "published" && isManager && !editing && (
+            <button className="mo-btn mo-btn-sm" onClick={() => onUnpublish(card)}><XCircle size={12} style={{ marginRight: 6 }} />Unpublish</button>
+          )}
           {isManager && !editing && (
             <select className="mo-select" value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value)} title="Assign this card to a team member">
               <option value="">Assign to…</option>
@@ -1561,6 +1599,16 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onP
           )}
           {history.length > 0 && !editing && (
             <button className="mo-btn mo-btn-sm" onClick={() => setShowHistory(h => !h)}><ListChecks size={12} style={{ marginRight: 6 }} />History ({history.length})</button>
+          )}
+          {isManager && !editing && (
+            confirmingDelete ? (
+              <span style={{ display: "flex", gap: 6 }}>
+                <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => onDelete(card)}>Confirm delete</button>
+                <button className="mo-btn mo-btn-sm" onClick={() => setConfirmingDelete(false)}>Cancel</button>
+              </span>
+            ) : (
+              <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => setConfirmingDelete(true)}><XCircle size={12} style={{ marginRight: 6 }} />Delete card</button>
+            )
           )}
         </div>
       </div>
