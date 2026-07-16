@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, jsonify
 
 from config import SUPABASE_URL, SUPABASE_ANON_KEY
-from core.auth import current_user
+from core.auth import current_user, login_required
+from core.logic import REGIONS, DEPARTMENTS
 from core.supabase_client import supabase
 
 bp = Blueprint("auth", __name__)
@@ -10,12 +11,31 @@ bp = Blueprint("auth", __name__)
 @bp.route("/login")
 def login():
     if current_user():
+        if not session.get("country") or not session.get("department"):
+            return redirect(url_for("auth.select_context"))
         return redirect(url_for("payments.hub"))
     return render_template(
         "auth/login.html",
         supabase_url=SUPABASE_URL, supabase_anon_key=SUPABASE_ANON_KEY,
         restoring=False, nav=[], user=None,
     )
+
+
+@bp.route("/select-context", methods=["GET", "POST"])
+@login_required
+def select_context():
+    if request.method == "POST":
+        country = request.form.get("country")
+        department = request.form.get("department")
+        if country not in REGIONS or department not in {d["id"] for d in DEPARTMENTS}:
+            return render_template("auth/select_context.html", regions=REGIONS, departments=DEPARTMENTS,
+                                    error="Pick a country and a department to continue.",
+                                    active_view=None, header_title="Select business context")
+        session["country"] = country
+        session["department"] = department
+        return redirect(url_for("payments.hub"))
+    return render_template("auth/select_context.html", regions=REGIONS, departments=DEPARTMENTS,
+                            error=None, active_view=None, header_title="Select business context")
 
 
 @bp.route("/auth/session", methods=["POST"])

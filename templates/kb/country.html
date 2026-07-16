@@ -1,5 +1,29 @@
 {% extends "layout.html" %}
-{% block kb_sidebar %}{% include "kb/_sidebar_tree.html" %}{% endblock %}
+{% block kb_sidebar %}
+<div style="margin-left:6px;margin-bottom:6px;">
+  <div style="font-size:11px;font-weight:900;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.1em;margin:4px 0 6px;padding-left:8px;">
+    {{ country_label }} · {{ dept_label }}
+  </div>
+  {% for card in scope_cards %}
+    <a href="{{ url_for('kb.open_card', card_id=card.id) }}"
+       style="display:block;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if open_card_id == card.id else 'transparent' }};padding:8px 8px;border-radius:8px;text-align:left;text-decoration:none;background:{{ 'linear-gradient(135deg, rgba(232,52,42,0.1), rgba(200,30,30,0.16))' if open_card_id == card.id else 'rgba(15,23,42,0.03)' }};margin-bottom:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+        <span style="font-size:12.5px;font-weight:800;color:var(--mo-ink);">{{ card.title }}</span>
+        <span style="font-size:10.5px;font-weight:800;color:{{ '#16a34a' if card.progress == 100 else 'var(--mo-muted)' }};white-space:nowrap;">{{ card.progress }}%</span>
+      </div>
+      <div style="width:100%;height:4px;background:rgba(15,23,42,0.08);border-radius:2px;margin-top:5px;overflow:hidden;">
+        <div style="width:{{ card.progress }}%;height:100%;background:{{ '#16a34a' if card.progress == 100 else '#94a3b8' }};"></div>
+      </div>
+    </a>
+  {% else %}
+    <div style="font-size:11px;color:var(--mo-muted);padding:4px 8px;">No cards yet</div>
+  {% endfor %}
+  <a href="{{ url_for('kb.global_view') if not is_global else url_for('kb.home') }}"
+     style="display:block;margin-top:10px;padding:8px;font-size:12px;font-weight:800;color:var(--mo-accent-2);text-decoration:none;">
+    {{ 'Global Policy →' if not is_global else '← Back to ' ~ regions[session['country']].short }}
+  </a>
+</div>
+{% endblock %}
 
 {% block section_pane %}
 {% if open_card %}
@@ -16,7 +40,7 @@
     {% for s in steps %}
       {% set is_active = loop.index0 == active_section %}
       {% set is_done = s.status == 'done' %}
-      <a href="{{ url_for('kb.open_card', region=open_card.country, card_id=open_card.id, section=loop.index0) }}"
+      <a href="{{ url_for('kb.open_card', card_id=open_card.id, section=loop.index0) }}"
          style="display:flex;align-items:center;gap:8px;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if is_active else 'transparent' }};background:{{ 'rgba(232,52,42,0.06)' if is_active else 'none' }};border-radius:6px;padding:7px 8px;text-align:left;text-decoration:none;">
         {% if is_done %}
           <span style="width:16px;height:16px;border-radius:50%;background:#16a34a;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:10px;">✓</span>
@@ -33,13 +57,15 @@
 
 {% block content %}
 <div style="display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap;">
-  {% if department and not open_card %}
+  {% if not open_card %}
     <details>
       <summary class="mo-btn mo-btn-sm mo-btn-primary" style="display:inline-flex;cursor:pointer;">+ Add a card — {{ country_label }} / {{ dept_label }}</summary>
       <div class="mo-card" style="margin-top:10px;max-width:600px;">
         <div style="font-weight:900;font-size:15px;margin-bottom:4px;color:var(--mo-ink);">New draft card — {{ country_label }} / {{ dept_label }}</div>
         <div style="font-size:12px;color:var(--mo-muted);margin-bottom:10px;">You ({{ user.name }}) will own this card. Build it as steps — every step needs a name and a description. It stays a draft until Gaurav publishes it.</div>
-        <form method="post" action="{{ url_for('kb.create_card', region=country, dept=department) }}">
+        <form method="post" action="{{ url_for('kb.create_card') }}">
+          <input type="hidden" name="country" value="{{ country }}">
+          <input type="hidden" name="department" value="{{ department }}">
           <input class="mo-input" name="title" placeholder="Card title" style="margin-bottom:10px;">
           <div style="display:grid;gap:10px;">
             {% for i in range(5) %}
@@ -56,22 +82,20 @@
         </form>
       </div>
     </details>
-  {% elif not department %}
-    <span style="font-size:12.5px;color:var(--mo-muted);font-weight:700;">Pick Country Policies, Fulfillment or Logistics on the left to add a card.</span>
   {% endif %}
 </div>
 
 {% if not open_card %}
-  {% if country_cards|length == 0 %}
+  {% if scope_cards|length == 0 %}
     <div style="text-align:center;padding:56px 0;color:var(--mo-muted);">
-      <div style="font-size:13.5px;">No cards here yet{{ ' — add the first one.' if department else '.' }}</div>
+      <div style="font-size:13.5px;">No cards here yet — add the first one.</div>
     </div>
   {% else %}
     <div class="kb-grid">
-      {% for c in country_cards %}
+      {% for c in scope_cards %}
         {% set pending_count = revisions|selectattr("cardId", "equalto", c.id)|selectattr("status", "equalto", "pending")|list|length %}
         {% set owner = users|selectattr("id", "equalto", c.owner)|list|first %}
-        <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('kb.open_card', region=country, card_id=c.id) }}">
+        <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('kb.open_card', card_id=c.id) }}">
           <span class="kb-pcard-badges">
             <span class="mo-pill mo-pill-{{ 'success' if c.status == 'published' else 'neutral' }}">{{ 'Published' if c.status == 'published' else 'Draft' }}</span>
             {% if pending_count > 0 %}<span class="mo-pill mo-pill-warn">{{ pending_count }} pending</span>{% endif %}
@@ -96,7 +120,7 @@
     <div class="mo-card kb-card-anim">
       <div style="height:5px;margin:-16px -18px 16px;border-radius:18px 18px 0 0;background:linear-gradient(90deg, #e8342a, #c81e1e, #e8342a);"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-        <a class="mo-btn mo-btn-sm" href="{{ url_for('kb.region_view', region=country) }}">← {{ country_label }}</a>
+        <a class="mo-btn mo-btn-sm" href="{{ url_for('kb.global_view') if is_global else url_for('kb.home') }}">← {{ country_label }}</a>
         <div style="display:flex;align-items:center;gap:10px;">
           <span style="font-size:13px;font-weight:800;color:var(--mo-ink);">{{ card.progress }}% · {{ card.doneSections }}/16 sections</span>
           <span class="mo-pill mo-pill-{{ 'success' if card.status == 'published' else 'neutral' }}">{{ 'Published' if card.status == 'published' else 'Draft' }}</span>
@@ -181,7 +205,7 @@
             </div>
           </form>
           {% if active_section < steps|length - 1 %}
-            <a class="mo-btn mo-btn-sm" style="margin-top:8px;display:inline-block;" href="{{ url_for('kb.open_card', region=card.country, card_id=card.id, section=active_section + 1) }}">Next section →</a>
+            <a class="mo-btn mo-btn-sm" style="margin-top:8px;display:inline-block;" href="{{ url_for('kb.open_card', card_id=card.id, section=active_section + 1) }}">Next section →</a>
           {% endif %}
         </div>
       </div>

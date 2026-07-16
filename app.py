@@ -26,11 +26,12 @@ def create_app():
     @app.context_processor
     def inject_globals():
         from core.auth import current_user, visible_nav
-        from core.logic import REGIONS, KB_TREE_REGIONS, KB_TREE_DEPTS
+        from core.logic import REGIONS, DEPARTMENTS, DEPARTMENT_LABEL, NAV_ICONS, COUNTRY_LABEL
         return {
             "user": current_user(), "nav": visible_nav(), "regions": REGIONS,
-            "kb_tree_regions": KB_TREE_REGIONS, "kb_tree_depts": KB_TREE_DEPTS,
-            "kb_tab": None, "kb_dept": None, "open_card_id": None, "ai_tab": None,
+            "departments": DEPARTMENTS, "department_label": DEPARTMENT_LABEL,
+            "country_label_map": COUNTRY_LABEL, "nav_icons": NAV_ICONS,
+            "open_card_id": None, "ai_tab": None, "active_view": None,
         }
 
     return app

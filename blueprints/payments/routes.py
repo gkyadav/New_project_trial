@@ -1,6 +1,6 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 
-from core.auth import login_required, current_user
+from core.auth import context_required, current_user
 from core.logic import PAYMENT_CARDS, STATUS_LABEL
 from core.services import add_audit
 from core.supabase_client import supabase, row_to_payment
@@ -9,7 +9,7 @@ bp = Blueprint("payments", __name__, url_prefix="/payments")
 
 
 @bp.route("/")
-@login_required
+@context_required
 def hub():
     user = current_user()
     cards = [c for c in PAYMENT_CARDS if user["role"] in c.get("roles", ["agent", "reviewer", "admin"])]
@@ -18,7 +18,7 @@ def hub():
 
 
 @bp.route("/status")
-@login_required
+@context_required
 def status():
     user = current_user()
     rows = supabase.table("payments").select("*").order("id").execute().data
@@ -26,21 +26,21 @@ def status():
     if user["role"] == "agent":
         payments = [p for p in payments if p["region"] == user["region"]]
     else:
-        region_filter = request.args.get("region", "all")
+        region_filter = request.args.get("region", session["country"])
         if region_filter != "all":
             payments = [p for p in payments if p["region"] == region_filter]
     return render_template("payments/status.html", active_view="bau", header_title="Payments",
                             payments=payments, status_label=STATUS_LABEL,
-                            region_filter=request.args.get("region", "all"))
+                            region_filter=request.args.get("region", session["country"]))
 
 
 @bp.route("/open/<card_id>")
-@login_required
+@context_required
 def open_card(card_id):
     if card_id == "payment_status":
         return redirect(url_for("payments.status"))
     if card_id == "payments_kb":
-        return redirect(url_for("kb.summary"))
+        return redirect(url_for("kb.home"))
     if card_id == "access_control":
         return redirect(url_for("admin.access_control"))
     card = next((c for c in PAYMENT_CARDS if c["id"] == card_id), None)
@@ -49,7 +49,7 @@ def open_card(card_id):
 
 
 @bp.route("/status/<payment_id>/change", methods=["POST"])
-@login_required
+@context_required
 def change_status(payment_id):
     user = current_user()
     if user["role"] != "admin":

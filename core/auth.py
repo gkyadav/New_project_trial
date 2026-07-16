@@ -32,10 +32,23 @@ def login_required(view):
     return wrapped
 
 
+def context_required(view):
+    """Like login_required, but also gates on a chosen country + department —
+    no section shows data until both are picked (mirrors VendorFlow's
+    admin_select_business_context gate)."""
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if not session.get("country") or not session.get("department"):
+            return redirect(url_for("auth.select_context"))
+        return view(*args, **kwargs)
+    return wrapped
+
+
 def roles_required(*roles):
     def decorator(view):
         @wraps(view)
-        @login_required
+        @context_required
         def wrapped(*args, **kwargs):
             if current_user()["role"] not in roles:
                 return redirect(url_for("payments.hub"))

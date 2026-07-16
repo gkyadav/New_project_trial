@@ -24,8 +24,8 @@
       {% for item in nav %}
         <div>
           <a class="mo-navitem {{ 'mo-nav-item-active' if active_view == item.id else 'mo-nav-item' }}"
-             href="{{ {'bau': url_for('payments.hub'), 'kb': url_for('kb.summary'), 'ai': url_for('ai.picker'), 'admin': url_for('admin.audit_log')}[item.id] }}">
-            {{ item.label }}
+             href="{{ {'bau': url_for('payments.hub'), 'kb': url_for('kb.home'), 'ai': url_for('ai.picker'), 'admin': (url_for('admin.access_control') if user.role == 'admin' else url_for('admin.audit_log'))}[item.id] }}">
+            <span class="mo-nav-icon">{{ nav_icons[item.id]|safe }}</span>{{ item.label }}
           </a>
           {% if item.id == 'kb' and active_view == 'kb' %}
             {% block kb_sidebar %}{% endblock %}
@@ -59,7 +59,15 @@
 
   <div class="mo-main">
     <header class="mo-header">
-      <div class="mo-header-title">{{ header_title }}</div>
+      <div>
+        <div class="mo-header-title">{{ header_title }}</div>
+        {% if session.country and session.department %}
+          <div style="margin-top:6px;display:flex;align-items:center;gap:8px;">
+            <span class="mo-pill mo-pill-neutral">{{ regions[session.country].short }} · {{ department_label.get(session.department, session.department) }}</span>
+            <a href="{{ url_for('auth.select_context') }}" style="font-size:11.5px;font-weight:800;color:var(--mo-accent-2);text-decoration:none;">Change</a>
+          </div>
+        {% endif %}
+      </div>
       <div class="mo-header-row">
         <div>
           <div class="mo-user-name">{{ user.name }}</div>

@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 
-from core.auth import login_required, current_user
+from core.auth import context_required, current_user
 from core.logic import (
     kb_bot_answer, detect_gaps, answer_looks_complete, group_questions_by_card,
     step_name_for, card_steps, steps_to_body, to_bullet_points, new_id, now_minutes, COUNTRY_LABEL, POINTS,
@@ -20,13 +20,13 @@ def _all_questions():
 
 
 @bp.route("/")
-@login_required
+@context_required
 def picker():
     return render_template("ai/picker.html", active_view="ai", header_title="AI workspace", ai_tab=None)
 
 
 @bp.route("/chat")
-@login_required
+@context_required
 def chat():
     user = current_user()
     cards = _all_cards()
@@ -46,7 +46,7 @@ def chat():
 
 
 @bp.route("/chat/ask", methods=["POST"])
-@login_required
+@context_required
 def chat_ask():
     q = request.form.get("question", "").strip()
     if q:
@@ -60,7 +60,7 @@ def chat_ask():
 
 
 @bp.route("/sopbot")
-@login_required
+@context_required
 def sopbot():
     user = current_user()
     questions = _all_questions()
@@ -90,7 +90,7 @@ def sopbot():
 
 
 @bp.route("/sopbot/card/<card_id>")
-@login_required
+@context_required
 def sopbot_card(card_id):
     questions = _all_questions()
     items = [q for q in questions if q["cardId"] == card_id and q["status"] in ("open", "answered")]
@@ -105,7 +105,7 @@ def sopbot_card(card_id):
 
 
 @bp.route("/sopbot/scan", methods=["POST"])
-@login_required
+@context_required
 def scan():
     user = current_user()
     if user["role"] != "admin":
@@ -137,7 +137,7 @@ def scan():
 
 
 @bp.route("/sopbot/question/<qid>/answer", methods=["POST"])
-@login_required
+@context_required
 def answer_question(qid):
     user = current_user()
     text = request.form.get("answer", "").strip()
@@ -159,7 +159,7 @@ def answer_question(qid):
 
 
 @bp.route("/sopbot/question/<qid>/submit-to-card", methods=["POST"])
-@login_required
+@context_required
 def submit_to_card(qid):
     row = supabase.table("bot_questions").select("*").eq("id", qid).limit(1).execute().data
     if not row:
@@ -181,11 +181,11 @@ def submit_to_card(qid):
     add_audit(q["answeredByName"] or "-", "Submit bot answer to card", f'Answer on "{q["cardTitle"]}" submitted as a revision', q["country"])
     award_points(q["answeredBy"], q["answeredByName"], POINTS["submitToCard"], f'Answer submitted to "{card["title"]}"', qid)
     flash(f'+{POINTS["submitToCard"]} pts to {q["answeredByName"]} — revision awaiting Gaurav\'s merge')
-    return redirect(url_for("kb.open_card", region=card["country"], card_id=card["id"]))
+    return redirect(url_for("kb.open_card", card_id=card["id"]))
 
 
 @bp.route("/sopbot/question/<qid>/dismiss", methods=["POST"])
-@login_required
+@context_required
 def dismiss_question(qid):
     user = current_user()
     row = supabase.table("bot_questions").select("*").eq("id", qid).limit(1).execute().data

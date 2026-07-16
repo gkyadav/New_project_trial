@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="max-width:560px;margin:40px auto 0;">
+  <div class="mo-card">
+    <div style="font-weight:900;font-size:17px;color:var(--mo-ink);margin-bottom:4px;">Select your business context</div>
+    <div style="font-size:12.5px;color:var(--mo-muted);margin-bottom:18px;">
+      Pick a country and a department — every section (Payments, Knowledge base, AI workspace) scopes to this until you change it.
+    </div>
+    {% if error %}<div class="mo-pill mo-pill-danger" style="display:block;margin-bottom:14px;padding:8px 12px;">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div style="font-size:12px;font-weight:900;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">Country</div>
+      <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+        {% for r in regions.values() %}
+          <label class="mo-loginrow" style="width:auto;flex:1;min-width:140px;cursor:pointer;">
+            <span style="display:flex;align-items:center;gap:8px;">
+              <span class="mo-region-swatch" style="background:{{ r.color }};"></span>{{ r.name }}
+            </span>
+            <input type="radio" name="country" value="{{ r.id }}" required style="accent-color:var(--mo-accent);">
+          </label>
+        {% endfor %}
+      </div>
+
+      <div style="font-size:12px;font-weight:900;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">Department</div>
+      <div style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap;">
+        {% for d in departments %}
+          <label class="mo-loginrow" style="width:auto;flex:1;min-width:140px;cursor:pointer;">
+            <span>{{ d.label }}</span>
+            <input type="radio" name="department" value="{{ d.id }}" required style="accent-color:var(--mo-accent);">
+          </label>
+        {% endfor %}
+      </div>
+
+      <button class="mo-btn mo-btn-primary" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

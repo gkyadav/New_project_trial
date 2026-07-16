@@ -20,6 +20,14 @@ NAV = [
     {"id": "admin", "label": "Admin", "roles": ["reviewer", "admin"]},
 ]
 
+_ICON_ATTRS = 'width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+NAV_ICONS = {
+    "bau": f'<svg xmlns="http://www.w3.org/2000/svg" {_ICON_ATTRS}><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+    "kb": f'<svg xmlns="http://www.w3.org/2000/svg" {_ICON_ATTRS}><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/></svg>',
+    "ai": f'<svg xmlns="http://www.w3.org/2000/svg" {_ICON_ATTRS}><rect x="3" y="8" width="18" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1" fill="currentColor" stroke="none"/></svg>',
+    "admin": f'<svg xmlns="http://www.w3.org/2000/svg" {_ICON_ATTRS}><path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg>',
+}
+
 STATUS_LABEL = {
     "unassigned": "Unassigned", "assigned": "Assigned", "in_review": "In AI review",
     "approved": "Sent (mock)", "resolved": "Resolved",
@@ -41,11 +49,13 @@ KB_TREE_REGIONS = [
     {"id": "ksa", "label": "KSA"},
     {"id": "egypt", "label": "Egypt"},
 ]
-KB_TREE_DEPTS = [
-    {"id": "country_policies", "label": "Country Policies"},
+DEPARTMENTS = [
     {"id": "fulfillment", "label": "Fulfillment"},
     {"id": "logistics", "label": "Logistics"},
+    {"id": "country_policies", "label": "Cross Functional"},
 ]
+KB_TREE_DEPTS = DEPARTMENTS
+DEPARTMENT_LABEL = {d["id"]: d["label"] for d in DEPARTMENTS}
 COUNTRY_LABEL = {"uae": "UAE", "ksa": "KSA", "egypt": "Egypt", "global": "Global"}
 
 PAYMENT_CARDS = [
