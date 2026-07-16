@@ -109,6 +109,7 @@ const BAU_GROUPS = ["Fulfillment", "Logistics"];
 const NAV = [
   { id: "bau", label: "Payments", icon: CreditCard, roles: ["agent", "reviewer", "admin"] },
   { id: "kb", label: "Knowledge base", icon: BookOpen, roles: ["agent", "reviewer", "admin"] },
+  { id: "ai", label: "AI workspace", icon: Bot, roles: ["agent", "reviewer", "admin"] },
   { id: "admin", label: "Admin", icon: ShieldCheck, roles: ["reviewer", "admin"] },
 ];
 
@@ -230,7 +231,9 @@ export default function App() {
   const [view, setView] = useState("bau");
   const [kbTab, setKbTab] = useState("uae");
   const [kbOpenCardId, setKbOpenCardId] = useState(null);
+  const [kbActiveSection, setKbActiveSection] = useState(0);
   const [kbTreeExpanded, setKbTreeExpanded] = useState({});
+  const [aiTab, setAiTab] = useState("chat");
   const [payView, setPayView] = useState("hub");
   const [adminTab, setAdminTab] = useState("access");
   const [regionFilter, setRegionFilter] = useState("all");
@@ -554,23 +557,36 @@ export default function App() {
     pushToast(`"${card.title}" deleted`);
   }
 
-  /* ---- knowledge base: git-style revisions ---- */
-  function proposeCardEdit(card, title, steps) {
-    if (!title.trim()) { pushToast("Card title is required"); return; }
-    const cleaned = cleanSteps(steps);
-    if (cleaned.error) { pushToast(cleaned.error); return; }
-    const body = stepsToBody(cleaned.steps);
-    if (title === card.title && body === card.body) { pushToast("No changes to propose"); return; }
-    const rev = {
-      id: "r" + Date.now(), cardId: card.id, title, body, steps: cleaned.steps,
-      authorId: currentUser.id, authorName: currentUser.name, note: "",
-      status: "pending", createdAt: new Date().toISOString().slice(0, 16).replace("T", " "),
-      decidedAt: null, decidedBy: null,
-    };
-    setKbRevisions(prev => prev.some(r => r.id === rev.id) ? prev : [rev, ...prev]);
-    dbWrite(supabase.from("kb_revisions").insert({ id: rev.id, card_id: rev.cardId, title: rev.title, body: rev.body, steps: rev.steps, author_id: rev.authorId, author_name: rev.authorName, note: "", status: "pending", created_at: rev.createdAt }));
-    addAudit("Propose card edit", `Edit proposed for "${card.title}"`, card.country);
-    pushToast(currentUser.role === "admin" ? "Revision created — merge it to apply" : "Edit submitted — awaiting Gaurav's merge");
+  /* ---- knowledge base: direct section save (SOP maker marks sections done as they go;
+     Gaurav's review happens at publish time, not through a separate merge step) ---- */
+  function saveCardSteps(card, steps) {
+    const cleaned = steps.map(s => ({ name: (s.name || "").trim(), detail: toBulletPoints(s.detail || ""), status: s.status === "done" ? "done" : "pending" }));
+    const body = stepsToBody(cleaned);
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, body, steps: cleaned, updatedAt } : c));
+    dbWrite(supabase.from("kb_cards").update({ body, steps: cleaned, updated_at: updatedAt }).eq("id", card.id));
+    addAudit("Edit knowledge card", `Updated "${card.title}"`, card.country);
+  }
+
+  function saveCardTitle(card, title) {
+    if (!title.trim() || title === card.title) return;
+    const updatedAt = new Date().toISOString().slice(0, 10);
+    setKbCards(prev => prev.map(c => c.id === card.id ? { ...c, title, updatedAt } : c));
+    dbWrite(supabase.from("kb_cards").update({ title, updated_at: updatedAt }).eq("id", card.id));
+    addAudit("Rename knowledge card", `Renamed to "${title}"`, card.country);
+  }
+
+  function openKbCard(regionId, card, sectionIndex) {
+    setView("kb");
+    setKbTab(regionId);
+    setKbOpenCardId(card.id);
+    const steps = cardSteps(card);
+    let idx = sectionIndex;
+    if (idx == null) {
+      const firstPending = steps.findIndex(s => s.status !== "done");
+      idx = firstPending === -1 ? 0 : firstPending;
+    }
+    setKbActiveSection(idx);
   }
 
   function mergeRevision(rev) {
@@ -726,8 +742,18 @@ export default function App() {
         </nav>
 
         {view === "kb" ? (
-          <KbSidebarTree cards={kbCards} kbTab={kbTab} setKbTab={setKbTab} setOpenCardId={setKbOpenCardId}
+          <KbSidebarTree cards={kbCards} kbTab={kbTab} setKbTab={setKbTab}
+            openCardId={kbOpenCardId} activeSection={kbActiveSection} onOpenCard={openKbCard}
             expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} currentUser={currentUser} />
+        ) : view === "ai" ? (
+          <div style={{ marginTop: 20 }}>
+            <button className="mo-navitem" style={aiTab === "chat" ? styles.navItemActive : styles.navItem} onClick={() => setAiTab("chat")}>
+              <Bot size={16} style={{ marginRight: 10, flexShrink: 0 }} />Chatbot
+            </button>
+            <button className="mo-navitem" style={aiTab === "sopbot" ? styles.navItemActive : styles.navItem} onClick={() => setAiTab("sopbot")}>
+              <Sparkles size={16} style={{ marginRight: 10, flexShrink: 0 }} />SOP completeness bot
+            </button>
+          </div>
         ) : (
           <div style={styles.regionLegend}>
             <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
@@ -773,22 +799,20 @@ export default function App() {
           ))}
 
           {view === "kb" && (
+            <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
+              newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
+              onSaveSteps={saveCardSteps} onSaveTitle={saveCardTitle} onMerge={mergeRevision} onReject={rejectRevision}
+              onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest}
+              openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId}
+              activeSection={kbActiveSection} setActiveSection={setKbActiveSection} />
+          )}
+
+          {view === "ai" && (
             <div>
-              <SubTabs
-                tabs={[{ id: "global", label: "Global Policy" }, { id: "uae", label: "UAE" }, { id: "ksa", label: "KSA" }, { id: "egypt", label: "Egypt" }, { id: "bot", label: "Bot test" }, { id: "sopbot", label: "SOP Bot" }]}
-                active={kbTab} onChange={setKbTab}
-              />
-              {kbTab === "bot" && <KbBot cards={kbCards} currentUser={currentUser} />}
-              {kbTab === "sopbot" && (
+              {aiTab === "chat" && <KbBot cards={kbCards} currentUser={currentUser} />}
+              {aiTab === "sopbot" && (
                 <SopBot questions={botQuestions} users={users} currentUser={currentUser} pointsLedger={pointsLedger}
                   onScan={scanForGaps} onAnswer={answerBotQuestion} onSubmitToCard={submitAnswerToCard} onDismiss={dismissBotQuestion} />
-              )}
-              {kbTab !== "bot" && kbTab !== "sopbot" && (
-                <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
-                  newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
-                  onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision}
-                  onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest}
-                  openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId} />
               )}
             </div>
           )}
@@ -1155,8 +1179,6 @@ function PaymentStatus({ payments, currentUser, onChange }) {
   );
 }
 
-const KB_SECTION_TABS = [{ id: "fulfillment", label: "Fulfillment" }, { id: "logistics", label: "Logistics" }];
-const KB_SECTIONS = { uae: KB_SECTION_TABS, ksa: KB_SECTION_TABS, egypt: KB_SECTION_TABS };
 const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt", global: "Global" };
 
 const KB_TINT_MAP = {
@@ -1453,13 +1475,11 @@ const KB_TREE_DEPTS = [
   { id: "logistics", label: "Logistics" },
 ];
 
-function KbSidebarTree({ cards, kbTab, setKbTab, setOpenCardId, expanded, setExpanded, currentUser }) {
+function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOpenCard, expanded, setExpanded, currentUser }) {
   function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
-  function openCard(regionId, card) { setKbTab(regionId); setOpenCardId(card.id); }
 
   return (
     <div style={{ marginTop: 20, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 8, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Knowledge base</div>
       <div style={{ overflowY: "auto", flex: 1, paddingRight: 4 }}>
         {KB_TREE_REGIONS.map(region => {
           const regionKey = `r:${region.id}`;
@@ -1467,7 +1487,7 @@ function KbSidebarTree({ cards, kbTab, setKbTab, setOpenCardId, expanded, setExp
           const regionOpen = !!expanded[regionKey];
           return (
             <div key={region.id} style={{ marginBottom: 4 }}>
-              <button onClick={() => toggle(regionKey)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff" }}>
+              <button onClick={() => { toggle(regionKey); setKbTab(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: region.id === kbTab ? "rgba(255,255,255,0.08)" : "none", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff" }}>
                 <span style={{ fontSize: 13.5, fontWeight: 800 }}>{region.label}</span>
                 <span style={{ fontSize: 11.5, color: "#9fb6dd", fontWeight: 700 }}>{regionCards.length}</span>
               </button>
@@ -1498,25 +1518,31 @@ function KbSidebarTree({ cards, kbTab, setKbTab, setOpenCardId, expanded, setExp
                               <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#4ade80" : "#fde047" }} />
                             </div>
                           </button>
-                          <button onClick={() => openCard(region.id, card)} style={{ fontSize: 10.5, color: "#86d8ff", background: "none", border: "none", cursor: "pointer", padding: "3px 8px", fontWeight: 700 }}>Open card →</button>
+                          <button onClick={() => onOpenCard(region.id, card)} style={{ fontSize: 10.5, color: "#86d8ff", background: "none", border: "none", cursor: "pointer", padding: "3px 8px", fontWeight: 700 }}>Open card →</button>
 
                           {cardOpen && (
                             <div style={{ marginLeft: 10, marginTop: 2 }}>
-                              {steps.map((s, i) => (
-                                <button key={i} onClick={() => openCard(region.id, card)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
-                                  <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                                    {s.status === "done" ? (
-                                      <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                        <Check size={9} color="#08240f" />
-                                      </span>
-                                    ) : (
-                                      <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #5a6b8c", flexShrink: 0 }} />
-                                    )}
-                                    <span style={{ fontSize: 11.5, color: "#d5e2f7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {s.name}</span>
-                                  </span>
-                                  <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#4ade80" : "#5a6b8c", flexShrink: 0, marginLeft: 6 }}>{s.status === "done" ? "DONE" : "·"}</span>
-                                </button>
-                              ))}
+                              {steps.map((s, i) => {
+                                const isWip = openCardId === card.id && activeSection === i && s.status !== "done";
+                                const label = s.status === "done" ? "DONE" : isWip ? "WIP" : "·";
+                                return (
+                                  <button key={i} onClick={() => onOpenCard(region.id, card, i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: isWip ? "rgba(250,204,21,0.08)" : "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
+                                    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                      {s.status === "done" ? (
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                          <Check size={9} color="#08240f" />
+                                        </span>
+                                      ) : isWip ? (
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#facc15", flexShrink: 0 }} />
+                                      ) : (
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #5a6b8c", flexShrink: 0 }} />
+                                      )}
+                                      <span style={{ fontSize: 11.5, color: "#d5e2f7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {s.name}</span>
+                                    </span>
+                                    <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#4ade80" : isWip ? "#facc15" : "#5a6b8c", flexShrink: 0, marginLeft: 6 }}>{label}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -1541,90 +1567,25 @@ function KbSidebarTree({ cards, kbTab, setKbTab, setOpenCardId, expanded, setExp
   );
 }
 
-function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, openCardId, setOpenCardId }) {
-  const sections = KB_SECTIONS[country];
-  const [section, setSection] = useState(sections ? sections[0].id : "general");
-  const [q, setQ] = useState("");
+function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onSaveSteps, onSaveTitle, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, openCardId, setOpenCardId, activeSection, setActiveSection }) {
   const [showForm, setShowForm] = useState(false);
-  const [selectedDept, setSelectedDept] = useState(null);
   const isManager = currentUser.role === "admin";
-
-  const countryCards = cards.filter(c => c.country === country);
-  const departments = ['country_policies', 'fulfillment', 'logistics'];
-  const deptLabel = { country_policies: 'Country Policies', fulfillment: 'Fulfillment', logistics: 'Logistics' };
-
-  const cardsByDept = {};
-  departments.forEach(d => {
-    cardsByDept[d] = countryCards.filter(c => c.department === d).filter(c => (c.title + c.body).toLowerCase().includes(q.toLowerCase()));
-  });
-
-  const list = Object.values(cardsByDept).flat();
-  const pendingHere = revisions.filter(r => r.status === "pending" && list.some(c => c.id === r.cardId)).length;
-  const openCard = cards.find(c => c.id === openCardId);
+  const openCard = cards.find(c => c.id === openCardId && c.country === country);
 
   return (
     <div>
-      {sections && (
-        <div style={{ display: "flex", gap: 8, margin: "14px 0 0" }}>
-          {sections.map(s => (
-            <button key={s.id} className={`mo-btn mo-btn-sm ${section === s.id ? "mo-btn-primary" : ""}`} onClick={() => setSection(s.id)}>{s.label}</button>
-          ))}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "14px 0", flexWrap: "wrap" }}>
+        <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => setShowForm(true)}>
+          <PlusCircle size={13} style={{ marginRight: 6 }} />Add a card — {COUNTRY_LABEL[country]}
+        </button>
+      </div>
+
+      {!openCard && (
+        <div style={{ textAlign: "center", padding: "56px 0", color: "var(--mo-muted)" }}>
+          <BookOpen size={28} style={{ opacity: 0.5, marginBottom: 10 }} />
+          <div style={{ fontSize: 13.5 }}>Pick a card from the left to view or edit its sections.</div>
         </div>
       )}
-
-      <div style={{ display: "flex", gap: 10, alignItems: "center", margin: "14px 0 0", flexWrap: "wrap" }}>
-        <div style={{ position: "relative", width: 320 }}>
-          <Search size={14} style={{ position: "absolute", left: 10, top: 11, color: "var(--mo-muted)" }} />
-          <input className="mo-input" style={{ paddingLeft: 30 }} placeholder={`Search ${COUNTRY_LABEL[country]} knowledge cards`} value={q} onChange={e => setQ(e.target.value)} />
-        </div>
-        {pendingHere > 0 && <span className="mo-pill mo-pill-warn">{pendingHere} change{pendingHere > 1 ? "s" : ""} awaiting Gaurav</span>}
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => setShowForm(true)} style={{ marginBottom: 14 }}>
-          <PlusCircle size={13} style={{ marginRight: 6 }} />Add a card
-        </button>
-
-        {departments.map(dept => (
-          <div key={dept} style={{ marginBottom: 16 }}>
-            <button onClick={() => setSelectedDept(selectedDept === dept ? null : dept)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", width: "100%", textAlign: "left" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "rgba(0,0,0,0.02)", borderRadius: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--mo-ink)", flex: 1 }}>{deptLabel[dept]}</span>
-                <span style={{ fontSize: 12, color: "var(--mo-muted)" }}>{cardsByDept[dept].length}</span>
-              </div>
-            </button>
-
-            {(selectedDept === dept || cardsByDept[dept].length === 0) && (
-              <div style={{ paddingLeft: 12 }}>
-                {cardsByDept[dept].length === 0 ? (
-                  <div style={{ fontSize: 12, color: "var(--mo-muted)", padding: "8px 10px" }}>No cards yet</div>
-                ) : (
-                  cardsByDept[dept].map(c => {
-                    const assignee = users.find(u => u.id === c.assignedTo);
-                    return (
-                      <button key={c.id} onClick={() => setOpenCardId(c.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", width: "100%", textAlign: "left", marginBottom: 8 }}>
-                        <div style={{ padding: "10px", background: "rgba(0,0,0,0.02)", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
-                            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--mo-ink)" }}>{c.title}</span>
-                            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--mo-success)", whiteSpace: "nowrap" }}>{c.progress}%</span>
-                          </div>
-                          <div style={{ width: "100%", height: 4, background: "rgba(0,0,0,0.05)", borderRadius: 2, marginBottom: 4, overflow: "hidden" }}>
-                            <div style={{ width: `${c.progress}%`, height: "100%", background: "var(--mo-success)", transition: "width 0.3s" }} />
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 11, color: "var(--mo-muted)" }}>{c.doneSections}/16 sections</span>
-                            {assignee && <span style={{ fontSize: 10, padding: "2px 6px", background: "rgba(0,0,0,0.05)", borderRadius: 3, whiteSpace: "nowrap" }}>{assignee.name}</span>}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
 
       {showForm && (
         <div className="kb-modal-overlay" onClick={() => setShowForm(false)}>
@@ -1649,24 +1610,23 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
       )}
 
       {openCard && (
-        <div className="kb-modal-overlay" onClick={() => setOpenCardId(null)}>
-          <div className="kb-modal" onClick={e => e.stopPropagation()}>
-            <KbCard card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
-              isManager={isManager} currentUser={currentUser} onPublish={onPublish} onUnpublish={onUnpublish}
-              onDelete={c => { onDelete(c); setOpenCardId(null); }}
-              onPropose={onPropose} onMerge={onMerge} onReject={onReject}
-              onAssign={onAssign} onRequestUpdate={onRequestUpdate} onClearUpdate={onClearUpdate} />
-          </div>
-        </div>
+        <KbCard key={openCard.id} card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
+          isManager={isManager} currentUser={currentUser} onPublish={onPublish} onUnpublish={onUnpublish}
+          onDelete={c => { onDelete(c); setOpenCardId(null); }}
+          onSaveSteps={onSaveSteps} onSaveTitle={onSaveTitle} onMerge={onMerge} onReject={onReject}
+          onAssign={onAssign} onRequestUpdate={onRequestUpdate} onClearUpdate={onClearUpdate}
+          onBack={() => setOpenCardId(null)}
+          activeSection={activeSection} setActiveSection={setActiveSection} />
       )}
     </div>
   );
 }
 
-function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onUnpublish, onDelete, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
-  const [editing, setEditing] = useState(false);
-  const [eTitle, setETitle] = useState(card.title);
-  const [eSteps, setESteps] = useState(cardSteps(card));
+function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onUnpublish, onDelete, onSaveSteps, onSaveTitle, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, onBack, activeSection, setActiveSection }) {
+  const steps = cardSteps(card);
+  const [draftTitle, setDraftTitle] = useState(card.title);
+  const [draftName, setDraftName] = useState(steps[activeSection]?.name || "");
+  const [draftDetail, setDraftDetail] = useState(steps[activeSection]?.detail || "");
   const [showHistory, setShowHistory] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requestNote, setRequestNote] = useState("");
@@ -1676,150 +1636,141 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
   const pending = revisions.filter(r => r.status === "pending");
   const history = revisions.filter(r => r.status !== "pending");
 
-  function startEdit() { setETitle(card.title); setESteps(cardSteps(card).map(s => ({ ...s }))); setEditing(true); }
+  useEffect(() => {
+    const s = cardSteps(card)[activeSection] || { name: "", detail: "" };
+    setDraftName(s.name);
+    setDraftDetail(s.detail);
+  }, [activeSection, card.id]);
 
-  function toggleSectionStatus(index) {
-    const updated = eSteps.map((s, i) => i === index ? { ...s, status: s.status === 'done' ? 'pending' : 'done' } : s);
-    setESteps(updated);
+  function saveActiveSection() {
+    const updated = cardSteps(card).map((s, i) => i === activeSection ? { ...s, name: draftName, detail: draftDetail } : s);
+    onSaveSteps(card, updated);
+  }
+
+  function toggleDone() {
+    const current = cardSteps(card)[activeSection];
+    const nextStatus = current.status === "done" ? "pending" : "done";
+    const updated = cardSteps(card).map((s, i) => i === activeSection ? { ...s, name: draftName, detail: draftDetail, status: nextStatus } : s);
+    onSaveSteps(card, updated);
   }
 
   return (
     <div className="mo-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-            <RegionDot region={card.country} />
-            {editing ? (
-              <input className="mo-input" style={{ maxWidth: 420, fontWeight: 900 }} value={eTitle} onChange={e => setETitle(e.target.value)} />
-            ) : (
-              <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{card.title}</span>
-            )}
-            <StatusPill status={card.status} />
-            {isManager && (
-              <select className="mo-input" style={{ maxWidth: 160, fontSize: 12, padding: "4px 6px" }} value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value ? e.target.value : null)}>
-                <option value="">Unassigned</option>
-                {users.filter(u => u.active).map(u => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            )}
-            {!isManager && assignee && <span className="mo-pill mo-pill-neutral">Assigned: {assignee.name}</span>}
-            {pending.length > 0 && <span className="mo-pill mo-pill-warn">{pending.length} pending change{pending.length > 1 ? "s" : ""}</span>}
-          </div>
-          {card.updateRequest && (
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", fontSize: 12.5 }}>
-              <span><AlertTriangle size={12} style={{ marginRight: 6, verticalAlign: -1, color: "var(--mo-warn)" }} />
-                <strong>Update requested</strong> by {card.updateRequestedBy} · {card.updateRequestedAt}: {card.updateRequest}
-                {card.assignedTo === currentUser?.id && <em> — click Edit below; it clears when your edit is merged.</em>}
-              </span>
-              {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onClearUpdate(card)}>Clear</button>}
-            </div>
-          )}
-
-          {editing && (
-            <div style={{ maxWidth: 640, marginTop: 4, marginBottom: 12 }}>
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-muted)", marginBottom: 6 }}>SECTION PROGRESS</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.05)", borderRadius: 3, overflow: "hidden" }}>
-                    <div style={{ width: `${Math.round((eSteps.filter(s => s.status === 'done').length / eSteps.length) * 100)}%`, height: "100%", background: "var(--mo-success)", transition: "width 0.3s" }} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-ink)", whiteSpace: "nowrap" }}>{eSteps.filter(s => s.status === 'done').length}/{eSteps.length}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                  {eSteps.map((s, i) => (
-                    <button key={i} onClick={() => toggleSectionStatus(i)} style={{ padding: "6px 8px", background: s.status === 'done' ? "rgba(34,197,94,0.1)" : "rgba(0,0,0,0.02)", border: `1px solid ${s.status === 'done' ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.1)"}`, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                      <input type="checkbox" checked={s.status === 'done'} onChange={() => {}} style={{ margin: 0, cursor: "pointer" }} />
-                      <span>{s.name.split(' ')[0]}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <StepEditor steps={eSteps} onChange={setESteps} />
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onPropose(card, eTitle, eSteps); setEditing(false); }}>
-                  <Send size={12} style={{ marginRight: 6 }} />Save
-                </button>
-                <button className="mo-btn mo-btn-sm" onClick={() => setEditing(false)}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {!editing && (
-            <div style={{ maxWidth: 640, marginTop: 4 }}>
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-muted)", marginBottom: 6 }}>SECTION PROGRESS</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.05)", borderRadius: 3, overflow: "hidden" }}>
-                    <div style={{ width: `${card.progress}%`, height: "100%", background: "var(--mo-success)", transition: "width 0.3s" }} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-ink)", whiteSpace: "nowrap" }}>{card.doneSections}/16</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                  {cardSteps(card).map((s, i) => (
-                    <div key={i} style={{ padding: "6px 8px", background: s.status === 'done' ? "rgba(34,197,94,0.1)" : "rgba(0,0,0,0.02)", border: `1px solid ${s.status === 'done' ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.1)"}`, borderRadius: 4, display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                      {s.status === 'done' ? <Check size={12} style={{ color: "var(--mo-success)" }} /> : <span style={{ width: 12 }} />}
-                      <span>{s.name.split(' ')[0]}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: 8 }}>
-                {cardSteps(card).map((s, i) => (
-                  <div key={i} className="kb-step">
-                    <div className="kb-step-head">
-                      <span className="kb-step-num">Section {i + 1}</span>
-                      <strong style={{ fontSize: 13 }}>{s.name}</strong>
-                      {s.status === 'done' && <Check size={12} style={{ marginLeft: "auto", color: "var(--mo-success)" }} />}
-                    </div>
-                    <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ fontSize: 11.5, color: "var(--mo-muted)", marginTop: 6 }}>
-            Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
-          {card.status === "draft" && isManager && !editing && (
-            <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(card)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
-          )}
-          {card.status === "published" && isManager && !editing && (
-            <button className="mo-btn mo-btn-sm" onClick={() => onUnpublish(card)}><XCircle size={12} style={{ marginRight: 6 }} />Unpublish</button>
-          )}
-          {isManager && !card.updateRequest && !editing && (
-            <button className="mo-btn mo-btn-sm" onClick={() => setRequesting(r => !r)}><HelpCircle size={12} style={{ marginRight: 6 }} />{requesting ? "Cancel request" : "Request update"}</button>
-          )}
-          {!editing && (
-            <button className="mo-btn mo-btn-sm" onClick={startEdit}><Pencil size={12} style={{ marginRight: 6 }} />Edit</button>
-          )}
-          {history.length > 0 && !editing && (
-            <button className="mo-btn mo-btn-sm" onClick={() => setShowHistory(h => !h)}><ListChecks size={12} style={{ marginRight: 6 }} />History ({history.length})</button>
-          )}
-          {isManager && !editing && (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <button className="mo-btn mo-btn-sm" onClick={onBack}>← {COUNTRY_LABEL[card.country]}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: "var(--mo-ink)" }}>{card.progress}% · {card.doneSections}/16 sections</span>
+          <StatusPill status={card.status} />
+          {isManager && (
             confirmingDelete ? (
               <span style={{ display: "flex", gap: 6 }}>
-                <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => onDelete(card)}>Confirm delete</button>
+                <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => onDelete(card)}>Confirm</button>
                 <button className="mo-btn mo-btn-sm" onClick={() => setConfirmingDelete(false)}>Cancel</button>
               </span>
             ) : (
-              <button className="mo-btn mo-btn-sm mo-btn-danger" onClick={() => setConfirmingDelete(true)}><XCircle size={12} style={{ marginRight: 6 }} />Delete card</button>
+              <button className="mo-btn mo-btn-sm mo-btn-danger" title="Delete card" onClick={() => setConfirmingDelete(true)}><XCircle size={13} /></button>
             )
           )}
         </div>
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <RegionDot region={card.country} />
+        <input className="mo-input" style={{ maxWidth: 420, fontWeight: 900, fontSize: 14.5 }} value={draftTitle}
+          onChange={e => setDraftTitle(e.target.value)}
+          onBlur={() => { if (draftTitle.trim() && draftTitle !== card.title) onSaveTitle(card, draftTitle.trim()); }} />
+        {isManager && (
+          <select className="mo-input" style={{ maxWidth: 160, fontSize: 12, padding: "4px 6px" }} value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value ? e.target.value : null)}>
+            <option value="">Unassigned</option>
+            {users.filter(u => u.active).map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        )}
+        {!isManager && assignee && <span className="mo-pill mo-pill-neutral">Assigned: {assignee.name}</span>}
+        {card.status === "draft" && isManager && (
+          <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => onPublish(card)}><Send size={12} style={{ marginRight: 6 }} />Publish</button>
+        )}
+        {card.status === "published" && isManager && (
+          <button className="mo-btn mo-btn-sm" onClick={() => onUnpublish(card)}><XCircle size={12} style={{ marginRight: 6 }} />Unpublish</button>
+        )}
+        {isManager && !card.updateRequest && (
+          <button className="mo-btn mo-btn-sm" onClick={() => setRequesting(r => !r)}><HelpCircle size={12} style={{ marginRight: 6 }} />{requesting ? "Cancel request" : "Request update"}</button>
+        )}
+        {pending.length > 0 && <span className="mo-pill mo-pill-warn">{pending.length} pending change{pending.length > 1 ? "s" : ""}</span>}
+      </div>
+
+      {card.updateRequest && (
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", fontSize: 12.5 }}>
+          <span><AlertTriangle size={12} style={{ marginRight: 6, verticalAlign: -1, color: "var(--mo-warn)" }} />
+            <strong>Update requested</strong> by {card.updateRequestedBy} · {card.updateRequestedAt}: {card.updateRequest}
+          </span>
+          {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onClearUpdate(card)}>Clear</button>}
+        </div>
+      )}
+
       {requesting && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--mo-border)" }}>
+        <div style={{ marginTop: 8, marginBottom: 12 }}>
           <textarea className="mo-textarea" rows={2} placeholder={`What should ${assignee ? assignee.name : "the assignee"} update on this card?`} value={requestNote} onChange={e => setRequestNote(e.target.value)} style={{ marginBottom: 8 }} />
           <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onRequestUpdate(card, requestNote); setRequesting(false); setRequestNote(""); }}>
             <Send size={12} style={{ marginRight: 6 }} />Send update request
           </button>
         </div>
+      )}
+
+      <div style={{ margin: "4px 0 14px" }}>
+        <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.05)", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "var(--mo-success)" : "#f59e0b", transition: "width 0.3s" }} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {steps.map((s, i) => {
+          const isActive = i === activeSection;
+          const isDone = s.status === "done";
+          return (
+            <div key={i} style={{ borderRadius: 12, border: `1px solid ${isActive ? "rgba(37,99,235,0.35)" : "var(--mo-border)"}`, overflow: "hidden", background: isActive ? "rgba(37,99,235,0.04)" : "var(--mo-surface-strong)" }}>
+              <button onClick={() => setActiveSection(i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 14px", borderLeft: `4px solid ${isDone ? "var(--mo-success)" : isActive ? "#2563eb" : "var(--mo-border)"}`, textAlign: "left" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isDone ? "var(--mo-success)" : isActive ? "#2563eb" : "rgba(0,0,0,0.06)", color: isDone || isActive ? "#fff" : "var(--mo-muted)", fontSize: 11, fontWeight: 800 }}>
+                    {isDone ? <Check size={13} /> : i + 1}
+                  </span>
+                  <strong style={{ fontSize: 13, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</strong>
+                </span>
+                <span className={`mo-pill ${isDone ? "mo-pill-success" : "mo-pill-neutral"}`} style={{ flexShrink: 0 }}>{isDone ? "Completed" : "Pending"}</span>
+              </button>
+
+              {isActive && (
+                <div style={{ padding: "0 14px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Section {i + 1} of {steps.length}</span>
+                    <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={toggleDone}>
+                      <Check size={12} style={{ marginRight: 6 }} />{isDone ? "Mark pending" : "Mark done"}
+                    </button>
+                  </div>
+                  <input className="mo-input" style={{ marginBottom: 8, fontWeight: 800 }} value={draftName} onChange={e => setDraftName(e.target.value)} placeholder="Section name" />
+                  <textarea className="mo-textarea" style={{ minHeight: 160 }} placeholder="Write this section — one point per line" value={draftDetail}
+                    onChange={e => setDraftDetail(e.target.value)}
+                    onInput={e => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} />
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={saveActiveSection}><Send size={12} style={{ marginRight: 6 }} />Save section</button>
+                    {i < steps.length - 1 && (
+                      <button className="mo-btn mo-btn-sm" onClick={() => setActiveSection(i + 1)}>Next section →</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--mo-muted)", margin: "10px 0" }}>
+        Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
+      </div>
+
+      {history.length > 0 && (
+        <button className="mo-btn mo-btn-sm" onClick={() => setShowHistory(h => !h)}><ListChecks size={12} style={{ marginRight: 6 }} />History ({history.length})</button>
       )}
 
       {pending.length > 0 && (
