@@ -1491,10 +1491,15 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
         {open.length === 0 && <EmptyState text={isManager ? "No open questions. Run a scan — if nothing comes back, the SOPs look complete." : "No open questions right now. Check back after the next scan."} />}
         <div style={{ display: "grid", gap: 14 }}>
           {openGroups.map(group => (
-            <div key={group.cardId} className="mo-card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid var(--mo-border)", flexWrap: "wrap" }}>
-                <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{group.cardTitle} · {COUNTRY_LABEL[group.country] || group.country}/{group.section}</span>
-                <span className="mo-pill mo-pill-neutral">{group.items.length} open</span>
+            <div key={group.cardId} className="mo-card kb-card-anim">
+              <div style={{ height: 5, margin: "-16px -18px 16px", borderRadius: "18px 18px 0 0", background: "linear-gradient(90deg, #e8342a, #c81e1e, #e8342a)", backgroundSize: "200% 100%", animation: "kbAccentFlow 6s ease infinite" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid var(--mo-border)" }}>
+                <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, flexShrink: 0 }}><BookOpen size={20} /></span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.cardTitle}</div>
+                  <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>{COUNTRY_LABEL[group.country] || group.country} / {group.section}</div>
+                </div>
+                <span className="mo-pill mo-pill-neutral" style={{ flexShrink: 0 }}>{group.items.length} open</span>
               </div>
               <div style={{ display: "grid", gap: 14 }}>
                 {group.items.map((q, idx) => (
@@ -1533,10 +1538,15 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
           </div>
           <div style={{ display: "grid", gap: 14 }}>
             {answeredGroups.map(group => (
-              <div key={group.cardId} className="mo-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid var(--mo-border)", flexWrap: "wrap" }}>
-                  <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{group.cardTitle} · {COUNTRY_LABEL[group.country] || group.country}/{group.section}</span>
-                  <span className="mo-pill mo-pill-success">{group.items.length} accepted</span>
+              <div key={group.cardId} className="mo-card kb-card-anim">
+                <div style={{ height: 5, margin: "-16px -18px 16px", borderRadius: "18px 18px 0 0", background: "linear-gradient(90deg, #e8342a, #c81e1e, #e8342a)", backgroundSize: "200% 100%", animation: "kbAccentFlow 6s ease infinite" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid var(--mo-border)" }}>
+                  <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, flexShrink: 0 }}><BookOpen size={20} /></span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.cardTitle}</div>
+                    <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>{COUNTRY_LABEL[group.country] || group.country} / {group.section}</div>
+                  </div>
+                  <span className="mo-pill mo-pill-success" style={{ flexShrink: 0 }}>{group.items.length} accepted</span>
                 </div>
                 <div style={{ display: "grid", gap: 14 }}>
                   {group.items.map((q, idx) => (
