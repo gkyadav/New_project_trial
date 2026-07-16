@@ -2254,6 +2254,7 @@ body {
   color: var(--mo-ink);
   font-family: var(--mo-body);
 }
+button, input, select, textarea { font-family: inherit; }
 .mo-navitem { cursor: pointer; }
 .mo-navitem:hover { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)) !important; color: #fff !important; box-shadow: 0 12px 26px rgba(232,52,42,0.34); }
 .mo-locked { display:flex; align-items:center; width:100%; text-align:left; padding:8px 14px; border-radius:10px; background:transparent; border:none; color:#8ea4c8; font-size:12px; font-weight:700; cursor:pointer; margin-bottom:2px; }
