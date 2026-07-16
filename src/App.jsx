@@ -773,10 +773,10 @@ export default function App() {
 
                 {item.id === "ai" && active && (
                   <div style={{ marginLeft: 6, marginBottom: 6 }}>
-                    <button className="mo-navitem" style={{ ...(aiTab === "chat" ? styles.navItemActive : styles.navItem), padding: "9px 12px", fontSize: 12.5 }} onClick={() => setAiTab("chat")}>
+                    <button className="mo-navitem" style={{ padding: "9px 12px", fontSize: 12.5, borderLeft: `3px solid ${aiTab === "chat" ? "var(--mo-accent)" : "transparent"}`, borderRadius: 8, color: aiTab === "chat" ? "var(--mo-accent-2)" : "#475569", ...(aiTab === "chat" ? KB_ACTIVE_STYLE : { background: "none" }) }} onClick={() => setAiTab("chat")}>
                       <Bot size={15} style={{ marginRight: 8, flexShrink: 0 }} />Chatbot
                     </button>
-                    <button className="mo-navitem" style={{ ...(aiTab === "sopbot" ? styles.navItemActive : styles.navItem), padding: "9px 12px", fontSize: 12.5 }} onClick={() => setAiTab("sopbot")}>
+                    <button className="mo-navitem" style={{ padding: "9px 12px", fontSize: 12.5, borderLeft: `3px solid ${aiTab === "sopbot" ? "var(--mo-accent)" : "transparent"}`, borderRadius: 8, color: aiTab === "sopbot" ? "var(--mo-accent-2)" : "#475569", ...(aiTab === "sopbot" ? KB_ACTIVE_STYLE : { background: "none" }) }} onClick={() => setAiTab("sopbot")}>
                       <Sparkles size={15} style={{ marginRight: 8, flexShrink: 0 }} />SOP completeness bot
                     </button>
                   </div>
@@ -851,17 +851,23 @@ export default function App() {
           {view === "ai" && (
             <div>
               {aiTab === null && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginTop: 14 }}>
-                  <button className="mo-card mo-clickable" style={{ textAlign: "left" }} onClick={() => setAiTab("chat")}>
-                    <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, marginBottom: 10 }}><Bot size={20} /></span>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", marginBottom: 4 }}>Chatbot</div>
-                    <div style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Ask questions about payment operations — answered straight from the knowledge base.</div>
-                  </button>
-                  <button className="mo-card mo-clickable" style={{ textAlign: "left" }} onClick={() => setAiTab("sopbot")}>
-                    <span className="kb-medallion" style={{ "--kb-c1": "#18a558", "--kb-c2": "#0f7a3d", width: 42, height: 42, marginBottom: 10 }}><Sparkles size={20} /></span>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", marginBottom: 4 }}>SOP completeness bot</div>
-                    <div style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Scans every card for gaps, asks the team, and fills in SOPs from the answers.</div>
-                  </button>
+                <div className="kb-grid">
+                  <PlayingCard
+                    tint={["#e8342a", "#c81e1e"]}
+                    pip="AI"
+                    icon={<Bot size={24} />}
+                    title="Chatbot"
+                    footer={<span style={{ fontSize: 12, color: "var(--mo-muted)" }}>Ask about payment operations</span>}
+                    onOpen={() => setAiTab("chat")}
+                  />
+                  <PlayingCard
+                    tint={["#18a558", "#0f7a3d"]}
+                    pip="AI"
+                    icon={<Sparkles size={24} />}
+                    title="SOP completeness bot"
+                    footer={<span style={{ fontSize: 12, color: "var(--mo-muted)" }}>Scans cards, asks the team, fills gaps</span>}
+                    onOpen={() => setAiTab("sopbot")}
+                  />
                 </div>
               )}
               {aiTab === "chat" && <KbBot cards={kbCards} currentUser={currentUser} />}
@@ -1104,18 +1110,18 @@ function PaymentsHub({ onOpenPaymentStatus, onOpenKb, onLocked }) {
       <p style={{ fontSize: 13.5, color: "var(--mo-muted)", margin: "14px 0 0" }}>
         {groupLabel} payment operations — pick a workstream to continue.
       </p>
-      <div className="mo-paygrid">
+      <div className="kb-grid">
         {PAYMENT_CARDS.map(card => {
           const Icon = card.icon;
           return (
-            <button key={card.id} className="mo-card mo-clickable mo-paycard" onClick={() => handleClick(card)}>
-              <span className={`feature-icon ${card.tint}`}><Icon size={18} /></span>
-              <span style={{ fontWeight: 900, fontSize: 15, lineHeight: 1.3, color: "var(--mo-ink)" }}>{card.title}</span>
-              <span style={{ fontSize: 12.5, color: "var(--mo-muted)", lineHeight: 1.45 }}>{card.desc}</span>
-              <span style={{ marginTop: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 800, color: "var(--mo-accent)" }}>
-                Open <ChevronRight size={13} />
-              </span>
-            </button>
+            <PlayingCard key={card.id}
+              tint={PAY_TINT[card.tint] || PAY_TINT.blue}
+              pip="PAY"
+              icon={<Icon size={24} />}
+              title={card.title}
+              footer={<span style={{ fontSize: 12, fontWeight: 800, color: "var(--mo-accent)", display: "inline-flex", alignItems: "center", gap: 4 }}>Open <ChevronRight size={13} /></span>}
+              onOpen={() => handleClick(card)}
+            />
           );
         })}
       </div>
@@ -1244,30 +1250,54 @@ const DEPT_TINT = {
 const deptTint = department => DEPT_TINT[department] || DEPT_TINT.country_policies;
 const kbTint = card => deptTint(card.department);
 
+const PAY_TINT = {
+  blue: ["#e8342a", "#c81e1e"],
+  green: ["#18a558", "#0f7a3d"],
+  orange: ["#94a3b8", "#64748b"],
+  purple: ["#dc2626", "#991b1b"],
+  cyan: ["#64748b", "#334155"],
+  pink: ["#059669", "#047857"],
+};
+
+/* Shared flip-card tile: used for knowledge cards, payment workstreams and
+   the AI workspace picker so every "choose one of these" screen looks the same. */
+function PlayingCard({ tint, pip, badges, icon, title, footer, onOpen }) {
+  const [c1, c2] = tint;
+  return (
+    <button className="kb-pcard" style={{ "--kb-c1": c1, "--kb-c2": c2 }} onClick={onOpen}>
+      {pip && <span className="kb-pip kb-pip-top">{pip}</span>}
+      {pip && <span className="kb-pip kb-pip-bottom">{pip}</span>}
+      {badges && <span className="kb-pcard-badges">{badges}</span>}
+      <span className="kb-medallion">{icon}</span>
+      <span className="kb-pcard-title kb-pcard-title-big">{title}</span>
+      {footer && <span className="kb-pcard-foot">{footer}</span>}
+    </button>
+  );
+}
+
 function KbPlayingCard({ card, users, currentUser, pendingCount, onOpen }) {
-  const [c1, c2] = kbTint(card);
   const owner = users.find(u => u.id === card.owner);
   const ownerName = owner ? owner.name : card.author;
   const initials = (ownerName || "?").replace(/[^A-Za-z ]/g, "").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
   const pip = card.section === "fulfillment" ? "FF" : card.section === "logistics" ? "LG" : (COUNTRY_LABEL[card.country] || "").toUpperCase();
   const mine = currentUser && card.assignedTo === currentUser.id;
   return (
-    <button className="kb-pcard" style={{ "--kb-c1": c1, "--kb-c2": c2 }} onClick={onOpen}>
-      <span className="kb-pip kb-pip-top">{pip}</span>
-      <span className="kb-pip kb-pip-bottom">{pip}</span>
-      <span className="kb-pcard-badges">
-        <StatusPill status={card.status} />
-        {mine && <span className="mo-pill mo-pill-neutral">Yours</span>}
-        {card.updateRequest && <span className="mo-pill mo-pill-warn">Update due</span>}
-        {pendingCount > 0 && <span className="mo-pill mo-pill-warn">{pendingCount} pending</span>}
-      </span>
-      <span className="kb-medallion"><BookOpen size={24} /></span>
-      <span className="kb-pcard-title kb-pcard-title-big">{card.title}</span>
-      <span className="kb-pcard-foot">
-        <span className="kb-avatar">{initials}</span>
-        <span className="kb-owner-name">{ownerName}</span>
-      </span>
-    </button>
+    <PlayingCard
+      tint={kbTint(card)}
+      pip={pip}
+      badges={
+        <>
+          <StatusPill status={card.status} />
+          {mine && <span className="mo-pill mo-pill-neutral">Yours</span>}
+          {card.updateRequest && <span className="mo-pill mo-pill-warn">Update due</span>}
+          {pendingCount > 0 && <span className="mo-pill mo-pill-warn">{pendingCount} pending</span>}
+        </>
+      }
+      icon={<BookOpen size={24} />}
+      title={card.title}
+      footer={<><span className="kb-avatar">{initials}</span><span className="kb-owner-name">{ownerName}</span></>}
+      onOpen={onOpen}
+    />
   );
 }
 
@@ -2307,8 +2337,6 @@ button, input, select, textarea { font-family: inherit; }
 .mo-stagerow:last-child { border-bottom: none; }
 .mo-stage-icon { display:flex; align-items:center; justify-content:center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--mo-border); color: var(--mo-muted); flex-shrink: 0; }
 .mo-stage-done { background: linear-gradient(135deg, var(--mo-success), #22c55e); border-color: transparent; color: #fff; }
-.mo-paygrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 16px; flex: 1; margin-top: 16px; }
-.mo-paycard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; min-height: 180px; border: 1px solid rgba(255,255,255,0.74); }
 .kb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; margin-top: 18px; }
 .kb-pcard { position: relative; aspect-ratio: 5 / 7; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 40px 16px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.78); background: linear-gradient(160deg, rgba(255,255,255,0.96), rgba(247,242,241,0.88)); box-shadow: var(--mo-shadow); backdrop-filter: blur(14px); cursor: pointer; font-family: var(--mo-body); overflow: hidden; transition: transform 0.18s ease, box-shadow 0.18s ease; }
 .kb-pcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 66px; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); opacity: 0.15; pointer-events: none; }
@@ -2351,10 +2379,6 @@ button, input, select, textarea { font-family: inherit; }
 .kb-modal-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(7,18,41,0.45); backdrop-filter: blur(6px); padding: 24px; overflow: auto; }
 .kb-modal { width: min(720px, 100%); max-height: 88vh; overflow: auto; border-radius: 22px; }
 .kb-modal > .mo-card { box-shadow: 0 40px 120px rgba(0,0,0,0.4); }
-@media (max-width: 1500px) { .mo-paygrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 1200px) { .mo-paygrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 860px) { .mo-paygrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .mo-paygrid { grid-template-columns: 1fr; } }
 
 /* ---- Portal login (style adopted from Admin Master Dashboard) ---- */
 .portal-login { position: relative; display: grid; height: 100vh; overflow: hidden; grid-template-columns: minmax(0, 1.45fr) minmax(410px, 0.55fr); grid-template-rows: auto minmax(0, 1fr); gap: 36px; padding: 30px 48px 24px; color: #fff; font-family: var(--mo-body); }
