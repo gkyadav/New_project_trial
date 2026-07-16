@@ -2,12 +2,42 @@
 
 Row mappers translate snake_case DB rows to the camelCase dict shape the
 templates/logic expect, mirroring the old rowToX() functions exactly.
+
+RLS on this project only grants reads/writes to an *authenticated* Supabase
+session — the original React app got that for free because supabase-js runs
+in the browser and attaches the signed-in user's JWT to every request. A
+bare server-side client with just the anon key is treated as anonymous and
+gets nothing back (every table looks empty). `supabase` below is a
+request-scoped proxy: once a user is signed in, their access token (stashed
+in the Flask session by blueprints/auth/routes.py) is attached to a
+per-request client via postgrest.auth(), so RLS sees them as authenticated,
+same as before. Before login (or outside a request), it falls back to the
+plain anon client.
 """
+from flask import g, has_request_context, session as flask_session
+from werkzeug.local import LocalProxy
+
 from supabase import create_client
 
 from config import SUPABASE_URL, SUPABASE_ANON_KEY
 
-supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+_anon_client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+
+def _current_client():
+    if not has_request_context():
+        return _anon_client
+    token = flask_session.get("access_token")
+    if not token:
+        return _anon_client
+    if not hasattr(g, "_authed_supabase"):
+        client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        client.postgrest.auth(token)
+        g._authed_supabase = client
+    return g._authed_supabase
+
+
+supabase = LocalProxy(_current_client)
 
 
 def row_to_user(r):

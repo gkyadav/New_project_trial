@@ -31,8 +31,13 @@ def establish_session():
     except Exception:
         return jsonify({"error": "Could not verify session"}), 401
     email = (auth_user.email or "").lower()
+    # Stash the token first so this and every later request in the session queries
+    # Supabase as this authenticated user — RLS treats an anon-key client as
+    # anonymous and returns nothing, even for real rows.
+    session["access_token"] = token
     row = supabase.table("users").select("*").eq("id", email).limit(1).execute().data
     if not row or not row[0]["active"]:
+        session.clear()
         return jsonify({"error": "This noon ID is not authorized for the Ops Console. "
                                  "Ask Gaurav to add you as a team member."}), 403
     session["user_id"] = email
