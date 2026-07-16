@@ -13,9 +13,9 @@ import {
 /* ---------------------------------------------------------------------- */
 
 const REGIONS = {
-  uae: { id: "uae", name: "United Arab Emirates", short: "UAE", color: "#00A19A" },
-  ksa: { id: "ksa", name: "Saudi Arabia", short: "KSA", color: "#0B6E4F" },
-  egypt: { id: "egypt", name: "Egypt", short: "EGY", color: "#C08A2E" },
+  uae: { id: "uae", name: "United Arab Emirates", short: "UAE", color: "#e8342a" },
+  ksa: { id: "ksa", name: "Saudi Arabia", short: "KSA", color: "#18a558" },
+  egypt: { id: "egypt", name: "Egypt", short: "EGY", color: "#64748b" },
 };
 
 const INITIAL_USERS = [
@@ -993,8 +993,8 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, onTempPassword, restoring }) {
           <p className="intro">Login to continue to your operations workspace.</p>
 
           {error && <div className="portal-alert">{error}</div>}
-          {!error && notice && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>{notice}</div>}
-          {restoring && <div className="portal-alert" style={{ background: "rgba(238,245,252,0.9)", borderColor: "rgba(37,99,235,0.25)", color: "#1e40af" }}>Signing you in…</div>}
+          {!error && notice && <div className="portal-alert" style={{ background: "rgba(232,52,42,0.06)", borderColor: "rgba(232,52,42,0.25)", color: "#c81e1e" }}>{notice}</div>}
+          {restoring && <div className="portal-alert" style={{ background: "rgba(232,52,42,0.06)", borderColor: "rgba(232,52,42,0.25)", color: "#c81e1e" }}>Signing you in…</div>}
 
           {step === "email" && (
             <form onSubmit={sendCode} className="portal-form">
@@ -1110,7 +1110,7 @@ function PaymentsHub({ onOpenPaymentStatus, onOpenKb, onLocked }) {
 
 function BauConsole({ bauState, currentUser, onCheck, onReset }) {
   const [expanded, setExpanded] = useState(null);
-  const palette = { Fulfillment: "#6C4FE0", Logistics: "#00B8A9" };
+  const palette = { Fulfillment: "#18a558", Logistics: "#64748b" };
   return (
     <div>
       <p style={{ fontSize: 13, color: "var(--mo-muted)", marginBottom: 16, maxWidth: 640 }}>
@@ -1221,23 +1221,13 @@ function PaymentStatus({ payments, currentUser, onChange }) {
 
 const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt", global: "Global" };
 
-const KB_TINT_MAP = {
-  "uae/fulfillment": ["#2563eb", "#7c3aed"],
-  "uae/logistics": ["#0891b2", "#18b56f"],
-  "ksa/fulfillment": ["#f59e0b", "#f97316"],
-  "ksa/logistics": ["#16a34a", "#0d9488"],
-  "egypt/fulfillment": ["#ec4899", "#7c3aed"],
-  "egypt/logistics": ["#f43f5e", "#f97316"],
-  "global/baseline": ["#475569", "#1e293b"],
-};
-const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#e8342a", "#c81e1e"];
-
 const DEPT_TINT = {
   country_policies: ["#e8342a", "#c81e1e"],
-  fulfillment: ["#0891b2", "#18b56f"],
-  logistics: ["#f97316", "#f59e0b"],
+  fulfillment: ["#18a558", "#0f7a3d"],
+  logistics: ["#64748b", "#475569"],
 };
 const deptTint = department => DEPT_TINT[department] || DEPT_TINT.country_policies;
+const kbTint = card => deptTint(card.department);
 
 function KbPlayingCard({ card, users, currentUser, pendingCount, onOpen }) {
   const [c1, c2] = kbTint(card);
@@ -1402,7 +1392,7 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
   return (
     <div style={{ maxWidth: 900, margin: "14px auto 0", display: "grid", gap: 14 }}>
       <div className="mo-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span className="kb-medallion" style={{ "--kb-c1": "#f59e0b", "--kb-c2": "#e11d48", width: 42, height: 42 }}><HelpCircle size={20} /></span>
+        <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42 }}><HelpCircle size={20} /></span>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)" }}>SOP Completeness Bot</div>
           <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
@@ -1452,12 +1442,12 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
                 {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onDismiss(q)}><XCircle size={12} style={{ marginRight: 4 }} />Dismiss</button>}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #f59e0b, #e11d48)" }}><HelpCircle size={14} /></span>
+                <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
                 <div className="bot-bubble" style={{ maxWidth: "100%" }}>{q.question}</div>
               </div>
               {feedback[q.id] && (
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
-                  <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #f59e0b, #e11d48)" }}><HelpCircle size={14} /></span>
+                  <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
                   <div className="bot-bubble" style={{ maxWidth: "100%", color: "var(--mo-warn)" }}>{feedback[q.id]}</div>
                 </div>
               )}
@@ -1642,10 +1632,10 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                           <button onClick={() => onOpenCard(region.id, card)} style={{ display: "block", width: "100%", border: "none", borderLeft: `3px solid ${cardActive ? "var(--mo-accent)" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left", transition: "background 0.2s ease", ...(cardActive ? KB_ACTIVE_STYLE : { background: "rgba(15,23,42,0.03)" }) }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                               <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mo-ink)" }}>{card.title}</span>
-                              <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#16a34a" : "#d97706", whiteSpace: "nowrap" }}>{card.progress}%</span>
+                              <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#16a34a" : "var(--mo-muted)", whiteSpace: "nowrap" }}>{card.progress}%</span>
                             </div>
                             <div style={{ width: "100%", height: 4, background: "rgba(15,23,42,0.08)", borderRadius: 2, marginTop: 5, overflow: "hidden" }}>
-                              <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#16a34a" : "#f59e0b" }} />
+                              <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#16a34a" : "#94a3b8" }} />
                             </div>
                           </button>
 
@@ -1655,20 +1645,20 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                                 const isWip = openCardId === card.id && activeSection === i && s.status !== "done";
                                 const label = s.status === "done" ? "DONE" : isWip ? "WIP" : "·";
                                 return (
-                                  <button key={i} onClick={() => onOpenCard(region.id, card, i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: isWip ? "rgba(217,119,6,0.1)" : "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
+                                  <button key={i} onClick={() => onOpenCard(region.id, card, i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: isWip ? "rgba(232,52,42,0.08)" : "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
                                     <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                                       {s.status === "done" ? (
                                         <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                           <Check size={9} color="#fff" />
                                         </span>
                                       ) : isWip ? (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#d97706", flexShrink: 0 }} />
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "var(--mo-accent)", flexShrink: 0 }} />
                                       ) : (
                                         <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #94a3b8", flexShrink: 0 }} />
                                       )}
                                       <span style={{ fontSize: 11.5, color: "#334155", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
                                     </span>
-                                    <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#16a34a" : isWip ? "#d97706" : "var(--mo-muted)", flexShrink: 0, marginLeft: 6 }}>{label}</span>
+                                    <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#16a34a" : isWip ? "var(--mo-accent)" : "var(--mo-muted)", flexShrink: 0, marginLeft: 6 }}>{label}</span>
                                   </button>
                                 );
                               })}
@@ -1837,7 +1827,7 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
       </div>
 
       {card.updateRequest && (
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", fontSize: 12.5 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, background: "rgba(232,52,42,0.08)", border: "1px solid rgba(232,52,42,0.25)", borderRadius: 10, padding: "8px 10px", margin: "6px 0", fontSize: 12.5 }}>
           <span><AlertTriangle size={12} style={{ marginRight: 6, verticalAlign: -1, color: "var(--mo-warn)" }} />
             <strong>Update requested</strong> by {card.updateRequestedBy} · {card.updateRequestedAt}: {card.updateRequest}
           </span>
@@ -2227,12 +2217,12 @@ const CSS = `
   --mo-border: rgba(15,23,42,0.1);
   --mo-accent: #e8342a;
   --mo-accent-2: #c81e1e;
-  --mo-blue-2: #ef4136;
-  --mo-coral: #f97316;
-  --mo-gold: #f59e0b;
-  --mo-violet: #8b5cf6;
+  --mo-blue-2: #c81e1e;
+  --mo-coral: #64748b;
+  --mo-gold: #e8342a;
+  --mo-violet: #64748b;
   --mo-success: #18a558;
-  --mo-warn: #b45309;
+  --mo-warn: #c81e1e;
   --mo-danger: #dc2626;
   --mo-locked-bg: rgba(255,255,255,0.55);
   --mo-shadow: 0 12px 32px rgba(15,23,42,0.08);
@@ -2269,21 +2259,21 @@ button, input, select, textarea { font-family: inherit; }
 .mo-btn-sm { padding: 6px 10px; font-size: 12.5px; }
 .mo-btn-primary { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-color: transparent; box-shadow: 0 10px 24px rgba(232,52,42,0.24); }
 .mo-btn-primary:hover { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); filter: brightness(0.96); box-shadow: 0 12px 28px rgba(232,52,42,0.32); }
-.mo-btn-danger { color: var(--mo-danger); border-color: rgba(251,113,133,0.4); }
+.mo-btn-danger { color: var(--mo-danger); border-color: rgba(232,52,42,0.4); }
 .mo-btn-danger:hover { background: rgba(255,241,242,0.9); border-color: var(--mo-danger); }
 .mo-btn:disabled { opacity: 0.6; cursor: default; }
 .mo-table-wrap { background: var(--mo-surface); border: 1px solid rgba(255,255,255,0.74); border-radius: 18px; overflow: hidden; box-shadow: var(--mo-shadow); backdrop-filter: blur(16px); }
 .mo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.mo-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 900; color: var(--mo-muted); padding: 11px 14px; border-bottom: 1px solid var(--mo-border); background: rgba(238,245,252,0.85); }
+.mo-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 900; color: var(--mo-muted); padding: 11px 14px; border-bottom: 1px solid var(--mo-border); background: rgba(15,23,42,0.03); }
 .mo-table td { padding: 11px 14px; border-bottom: 1px solid var(--mo-border); vertical-align: top; }
 .mo-table tr:last-child td { border-bottom: none; }
 .mo-table tr:hover td { background: rgba(232,52,42,0.04); }
 .mo-mono { font-family: var(--mo-mono); color: var(--mo-ink); }
 .mo-pill { display:inline-block; font-size: 11.5px; padding: 2px 10px; border-radius: 999px; font-weight: 800; }
 .mo-pill-neutral { background: rgba(232,52,42,0.1); color: var(--mo-accent); }
-.mo-pill-warn { background: rgba(249,115,22,0.13); color: var(--mo-warn); }
+.mo-pill-warn { background: rgba(232,52,42,0.1); color: var(--mo-warn); }
 .mo-pill-success { background: rgba(24,181,111,0.14); color: #0e7a4c; }
-.mo-pill-danger { background: rgba(225,29,72,0.1); color: var(--mo-danger); }
+.mo-pill-danger { background: rgba(232,52,42,0.1); color: var(--mo-danger); }
 .mo-select { border: 1px solid var(--mo-border); border-radius: 10px; padding: 7px 10px; font-size: 12.5px; font-family: var(--mo-body); font-weight: 700; color: var(--mo-ink); background: var(--mo-surface-strong); }
 .mo-input { width: 100%; border: 1px solid var(--mo-border); border-radius: 10px; padding: 9px 12px; font-size: 13px; font-weight: 600; font-family: var(--mo-body); background: rgba(255,255,255,0.92); color: var(--mo-ink); box-sizing: border-box; }
 .mo-input:focus, .mo-textarea:focus, .mo-select:focus { outline: none; border-color: rgba(232,52,42,0.55); box-shadow: 0 0 0 4px rgba(232,52,42,0.12); }
@@ -2306,7 +2296,7 @@ button, input, select, textarea { font-family: inherit; }
 .mo-paygrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 16px; flex: 1; margin-top: 16px; }
 .mo-paycard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; min-height: 180px; border: 1px solid rgba(255,255,255,0.74); }
 .kb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px; margin-top: 18px; }
-.kb-pcard { position: relative; aspect-ratio: 5 / 7; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 40px 16px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.78); background: linear-gradient(160deg, rgba(255,255,255,0.96), rgba(238,245,255,0.88)); box-shadow: var(--mo-shadow); backdrop-filter: blur(14px); cursor: pointer; font-family: var(--mo-body); overflow: hidden; transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.kb-pcard { position: relative; aspect-ratio: 5 / 7; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 40px 16px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.78); background: linear-gradient(160deg, rgba(255,255,255,0.96), rgba(247,242,241,0.88)); box-shadow: var(--mo-shadow); backdrop-filter: blur(14px); cursor: pointer; font-family: var(--mo-body); overflow: hidden; transition: transform 0.18s ease, box-shadow 0.18s ease; }
 .kb-pcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 66px; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); opacity: 0.15; pointer-events: none; }
 .kb-pcard::after { content: ""; position: absolute; inset: 0; border-radius: 20px; border: 2px solid transparent; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)) border-box; -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 0.18s ease; pointer-events: none; }
 .kb-pcard:hover { transform: translateY(-5px) rotate(-0.6deg); box-shadow: 0 26px 70px rgba(35,56,86,0.22), 0 0 34px rgba(232,52,42,0.28); }
@@ -2356,14 +2346,14 @@ button, input, select, textarea { font-family: inherit; }
 .portal-login { position: relative; display: grid; height: 100vh; overflow: hidden; grid-template-columns: minmax(0, 1.45fr) minmax(410px, 0.55fr); grid-template-rows: auto minmax(0, 1fr); gap: 36px; padding: 30px 48px 24px; color: #fff; font-family: var(--mo-body); }
 .portal-bg, .portal-overlay { position: absolute; inset: 0; }
 .portal-bg { width: 100%; height: 100%; filter: brightness(1.14) saturate(1.08); object-fit: cover; }
-.portal-overlay { background: linear-gradient(90deg, rgba(2,11,33,0.12), rgba(4,15,45,0.03) 54%, rgba(3,9,31,0.64)), radial-gradient(circle at 85% 48%, rgba(29,78,216,0.22), transparent 34%), linear-gradient(180deg, rgba(2,8,29,0.1), rgba(2,8,29,0.48)); }
+.portal-overlay { background: linear-gradient(90deg, rgba(2,11,33,0.12), rgba(4,15,45,0.03) 54%, rgba(3,9,31,0.64)), radial-gradient(circle at 85% 48%, rgba(232,52,42,0.22), transparent 34%), linear-gradient(180deg, rgba(2,8,29,0.1), rgba(2,8,29,0.48)); }
 .portal-header { position: relative; z-index: 1; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(250px, 1fr) auto minmax(250px, 1fr); align-items: center; gap: 20px; }
 .brand-lockup { display: flex; align-items: center; gap: 12px; color: #fff; }
 .brand-lockup.portal-brand { justify-self: start; }
 .brand-lockup strong { display: block; font-weight: 900; }
 .brand-lockup div > span { display: block; margin-top: 2px; color: rgba(255,255,255,0.74); font-size: 0.82rem; font-weight: 800; }
 .noon-mark { display: inline-grid; place-items: center; padding: 8px 14px; border-radius: 12px; background: #FEDE00; color: #1A1A1A; font-weight: 900; font-size: 1.05rem; letter-spacing: -0.5px; box-shadow: 0 14px 30px rgba(0,0,0,0.3); }
-.region-pill { display: flex; align-items: center; gap: 14px; border: 1px solid rgba(255,255,255,0.2); border-radius: 999px; background: rgba(14,54,128,0.48); box-shadow: 0 18px 42px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.16); padding: 10px 20px; backdrop-filter: blur(18px); }
+.region-pill { display: flex; align-items: center; gap: 14px; border: 1px solid rgba(255,255,255,0.2); border-radius: 999px; background: rgba(60,10,10,0.48); box-shadow: 0 18px 42px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.16); padding: 10px 20px; backdrop-filter: blur(18px); }
 .region-pill span { display: flex; align-items: center; gap: 8px; color: #fff; font-weight: 900; }
 .region-pill b { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: rgba(255,255,255,0.12); font-size: 0.85rem; }
 .region-pill i { width: 1px; height: 22px; background: rgba(255,255,255,0.42); }
@@ -2376,30 +2366,30 @@ button, input, select, textarea { font-family: inherit; }
 .feature-grid strong { display: block; color: #fff; font-size: 0.82rem; font-weight: 900; line-height: 1.25; }
 .feature-grid small { display: block; margin-top: 8px; color: rgba(255,255,255,0.72); font-size: 0.7rem; font-weight: 700; line-height: 1.25; }
 .feature-icon { display: grid; width: 38px; height: 38px; margin-bottom: 10px; place-items: center; border-radius: 50%; color: #fff; font-size: 0.78rem; font-weight: 900; }
-.feature-icon.blue { background: linear-gradient(135deg, #0ea5e9, #2563eb); }
-.feature-icon.green { background: linear-gradient(135deg, #10b981, #059669); }
-.feature-icon.orange { background: linear-gradient(135deg, #fb923c, #f97316); }
-.feature-icon.purple { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
-.feature-icon.cyan { background: linear-gradient(135deg, #22d3ee, #0891b2); }
-.feature-icon.pink { background: linear-gradient(135deg, #ec4899, #be185d); }
+.feature-icon.blue { background: linear-gradient(135deg, #e8342a, #c81e1e); }
+.feature-icon.green { background: linear-gradient(135deg, #18a558, #0f7a3d); }
+.feature-icon.orange { background: linear-gradient(135deg, #94a3b8, #64748b); }
+.feature-icon.purple { background: linear-gradient(135deg, #dc2626, #991b1b); }
+.feature-icon.cyan { background: linear-gradient(135deg, #64748b, #334155); }
+.feature-icon.pink { background: linear-gradient(135deg, #059669, #047857); }
 .trust-bar { display: flex; max-width: 100%; align-items: center; gap: 20px; margin-top: 16px; border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; background: rgba(8,17,38,0.34); padding: 12px 16px; color: rgba(255,255,255,0.78); font-size: 0.86rem; font-weight: 700; backdrop-filter: blur(14px); }
 .trust-bar strong { color: #fff; font-weight: 900; }
 .portal-card-wrap { display: grid; align-items: center; justify-items: center; min-height: 0; }
-.portal-card { width: min(100%, 430px); border: 1px solid rgba(255,255,255,0.72); border-radius: 34px; background: linear-gradient(150deg, rgba(255,255,255,0.92), rgba(232,241,255,0.84)), rgba(255,255,255,0.86); box-shadow: 0 0 44px rgba(59,130,246,0.62), 0 26px 80px rgba(0,0,0,0.28); padding: 30px 34px; color: var(--mo-ink); text-align: center; backdrop-filter: blur(22px); }
+.portal-card { width: min(100%, 430px); border: 1px solid rgba(255,255,255,0.72); border-radius: 34px; background: linear-gradient(150deg, rgba(255,255,255,0.92), rgba(255,238,237,0.84)), rgba(255,255,255,0.86); box-shadow: 0 0 44px rgba(232,52,42,0.5), 0 26px 80px rgba(0,0,0,0.28); padding: 30px 34px; color: var(--mo-ink); text-align: center; backdrop-filter: blur(22px); }
 .portal-card .card-mark { margin: 0 auto 12px; }
 .portal-card h2 { margin: 0 0 4px; color: #071a3d; font-size: 1.78rem; font-weight: 900; }
-.portal-card-subtitle { margin: 0 0 12px; color: #1155d9; font-weight: 800; }
+.portal-card-subtitle { margin: 0 0 12px; color: #c81e1e; font-weight: 800; }
 .card-rule { width: 210px; height: 1px; margin: 12px auto 18px; background: linear-gradient(90deg, transparent, rgba(80,98,130,0.28), transparent); }
 .portal-card h3 { margin: 0 0 6px; color: #081a3a; font-size: 1.22rem; font-weight: 900; }
 .portal-card .intro { max-width: 290px; margin: 0 auto 16px; color: #39506d; font-weight: 700; line-height: 1.55; font-size: 0.92rem; }
-.portal-alert { margin-bottom: 14px; border: 1px solid rgba(251,113,133,0.28); border-radius: 12px; background: rgba(255,241,242,0.9); color: #9f1239; padding: 12px 14px; font-size: 0.9rem; font-weight: 800; }
+.portal-alert { margin-bottom: 14px; border: 1px solid rgba(232,52,42,0.28); border-radius: 12px; background: rgba(255,241,242,0.9); color: #c81e1e; padding: 12px 14px; font-size: 0.9rem; font-weight: 800; }
 .portal-form { display: grid; gap: 9px; text-align: left; }
 .portal-form label { color: #253b59; font-size: 0.84rem; font-weight: 900; }
 .input-shell { display: flex; align-items: center; border: 1px solid rgba(95,112,135,0.24); border-radius: 10px; background: rgba(255,255,255,0.86); box-shadow: inset 0 1px 0 rgba(255,255,255,0.8); overflow: hidden; }
 .input-shell span { flex: 0 0 48px; color: #31517c; font-weight: 900; font-size: 0.8rem; text-align: center; }
 .input-shell input { flex: 1 1 auto; min-width: 0; min-height: 44px; border: 0; background: transparent; box-shadow: none; outline: none; padding: 0 14px 0 0; color: var(--mo-ink); font: inherit; font-weight: 700; }
 .input-shell:focus-within { border-color: rgba(232,52,42,0.55); box-shadow: 0 0 0 4px rgba(232,52,42,0.12); }
-.forgot-link { justify-self: end; color: #1155d9; font-size: 0.82rem; font-weight: 800; text-decoration: none; }
+.forgot-link { justify-self: end; color: #c81e1e; font-size: 0.82rem; font-weight: 800; text-decoration: none; }
 .portal-form button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; margin-top: 4px; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; padding: 0 18px; cursor: pointer; font: inherit; font-weight: 900; box-shadow: 0 10px 24px rgba(232,52,42,0.24); }
 .portal-form button:hover { filter: brightness(0.96); }
 .or-divider { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin: 14px 0 12px; color: var(--mo-muted); font-size: 0.88rem; }
@@ -2408,7 +2398,7 @@ button, input, select, textarea { font-family: inherit; }
 .sso-button { width: 100%; min-height: 46px; border: 1px solid rgba(232,52,42,0.18); border-radius: 10px; background: rgba(255,255,255,0.42); color: #071a3d; cursor: pointer; font: inherit; font-weight: 900; box-shadow: none; }
 .sso-button:hover { background: rgba(255,255,255,0.62); }
 .support-copy { margin: 14px 0 0; color: var(--mo-muted); font-size: 0.9rem; font-weight: 700; }
-.support-copy a { color: #1155d9; font-weight: 900; text-decoration: none; }
+.support-copy a { color: #c81e1e; font-weight: 900; text-decoration: none; }
 .demo-logins { margin-top: 14px; border-top: 1px solid var(--mo-border); padding-top: 12px; text-align: left; }
 .demo-logins summary { cursor: pointer; color: var(--mo-muted); font-weight: 900; font-size: 0.88rem; }
 .demo-grid { display: grid; gap: 10px; margin-top: 14px; }
