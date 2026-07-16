@@ -1419,13 +1419,17 @@ function groupQuestionsByCard(list) {
 function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer, onSubmitToCard, onDismiss }) {
   const [drafts, setDrafts] = useState({});
   const [feedback, setFeedback] = useState({});
+  const [selectedCardId, setSelectedCardId] = useState(null);
   const isManager = currentUser.role === "admin";
 
   const open = questions.filter(q => q.status === "open");
   const answered = questions.filter(q => q.status === "answered");
   const submitted = questions.filter(q => q.status === "submitted");
-  const openGroups = groupQuestionsByCard(open);
-  const answeredGroups = groupQuestionsByCard(answered);
+  const groups = groupQuestionsByCard([...open, ...answered]).map(g => ({
+    ...g,
+    openCount: g.items.filter(q => q.status === "open").length,
+    answeredCount: g.items.filter(q => q.status === "answered").length,
+  }));
 
   const totals = {};
   pointsLedger.forEach(p => { totals[p.userId] = (totals[p.userId] || 0) + p.points; });
@@ -1442,6 +1446,74 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
     setFeedback(f => ({ ...f, [q.id]: "" }));
     setDrafts(d => ({ ...d, [q.id]: "" }));
     onAnswer(q, text);
+  }
+
+  const selectedGroup = selectedCardId ? groups.find(g => g.cardId === selectedCardId) : null;
+
+  if (selectedCardId) {
+    return (
+      <div style={{ maxWidth: 900, margin: "14px auto 0", display: "grid", gap: 14 }}>
+        <button className="mo-btn mo-btn-sm" style={{ justifySelf: "start" }} onClick={() => setSelectedCardId(null)}>← All knowledge cards</button>
+
+        {!selectedGroup ? (
+          <EmptyState text="All caught up on this card — nothing left to answer." />
+        ) : (
+          <div className="mo-card kb-card-anim">
+            <div style={{ height: 5, margin: "-16px -18px 16px", borderRadius: "18px 18px 0 0", background: "linear-gradient(90deg, #e8342a, #c81e1e, #e8342a)", backgroundSize: "200% 100%", animation: "kbAccentFlow 6s ease infinite" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid var(--mo-border)" }}>
+              <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, flexShrink: 0 }}><BookOpen size={20} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedGroup.cardTitle}</div>
+                <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>{COUNTRY_LABEL[selectedGroup.country] || selectedGroup.country} / {selectedGroup.section}</div>
+              </div>
+              {selectedGroup.openCount > 0 && <span className="mo-pill mo-pill-neutral" style={{ flexShrink: 0 }}>{selectedGroup.openCount} pending</span>}
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              {selectedGroup.items.map((q, idx) => (
+                <div key={q.id} style={{ paddingTop: idx > 0 ? 14 : 0, borderTop: idx > 0 ? "1px solid var(--mo-border)" : "none" }}>
+                  {q.status === "open" ? (
+                    <>
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)", flexShrink: 0 }}><HelpCircle size={14} /></span>
+                        <div className="bot-bubble" style={{ maxWidth: "100%", flex: 1 }}>{q.question}</div>
+                        {isManager && <button className="mo-btn mo-btn-sm" style={{ flexShrink: 0 }} onClick={() => onDismiss(q)} title="Dismiss"><XCircle size={12} /></button>}
+                      </div>
+                      {feedback[q.id] && (
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
+                          <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
+                          <div className="bot-bubble" style={{ maxWidth: "100%", color: "var(--mo-warn)" }}>{feedback[q.id]}</div>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <textarea className="mo-textarea" rows={2} placeholder={`Answer with specifics — earns +${POINTS.botAnswer} pts when the bot accepts it`}
+                          value={drafts[q.id] || ""} onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))} />
+                        <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ alignSelf: "flex-end", flexShrink: 0 }} disabled={!(drafts[q.id] || "").trim()} onClick={() => handleAnswer(q)}>
+                          <Send size={12} style={{ marginRight: 6 }} />Answer
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>{q.question}</span>
+                        <span style={{ fontSize: 12, color: "var(--mo-muted)", whiteSpace: "nowrap" }}>by <strong>{q.answeredByName}</strong> · {q.answeredAt}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--mo-ink)", whiteSpace: "pre-line", background: "var(--mo-surface-alt)", borderRadius: 10, padding: "8px 10px" }}>{q.answer}</div>
+                      {(isManager || q.answeredBy === currentUser.id) && (
+                        <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => onSubmitToCard(q)}>
+                          <PlusCircle size={12} style={{ marginRight: 6 }} />Submit to knowledge card (+{POINTS.submitToCard} pts)
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -1483,92 +1555,27 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
         </div>
       </div>
 
-      {/* Open questions — one panel per knowledge card */}
+      {/* One tile per knowledge card that still needs attention — no question text here,
+          just a pending count. Click a tile to open its questions and answer them. */}
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "4px 0 10px" }}>
-          Open questions ({open.length})
+          Knowledge cards with open questions ({groups.length})
         </div>
-        {open.length === 0 && <EmptyState text={isManager ? "No open questions. Run a scan — if nothing comes back, the SOPs look complete." : "No open questions right now. Check back after the next scan."} />}
-        <div style={{ display: "grid", gap: 14 }}>
-          {openGroups.map(group => (
-            <div key={group.cardId} className="mo-card kb-card-anim">
-              <div style={{ height: 5, margin: "-16px -18px 16px", borderRadius: "18px 18px 0 0", background: "linear-gradient(90deg, #e8342a, #c81e1e, #e8342a)", backgroundSize: "200% 100%", animation: "kbAccentFlow 6s ease infinite" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid var(--mo-border)" }}>
-                <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, flexShrink: 0 }}><BookOpen size={20} /></span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.cardTitle}</div>
-                  <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>{COUNTRY_LABEL[group.country] || group.country} / {group.section}</div>
-                </div>
-                <span className="mo-pill mo-pill-neutral" style={{ flexShrink: 0 }}>{group.items.length} open</span>
-              </div>
-              <div style={{ display: "grid", gap: 14 }}>
-                {group.items.map((q, idx) => (
-                  <div key={q.id} style={{ paddingTop: idx > 0 ? 14 : 0, borderTop: idx > 0 ? "1px solid var(--mo-border)" : "none" }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)", flexShrink: 0 }}><HelpCircle size={14} /></span>
-                      <div className="bot-bubble" style={{ maxWidth: "100%", flex: 1 }}>{q.question}</div>
-                      {isManager && <button className="mo-btn mo-btn-sm" style={{ flexShrink: 0 }} onClick={() => onDismiss(q)} title="Dismiss"><XCircle size={12} /></button>}
-                    </div>
-                    {feedback[q.id] && (
-                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
-                        <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
-                        <div className="bot-bubble" style={{ maxWidth: "100%", color: "var(--mo-warn)" }}>{feedback[q.id]}</div>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <textarea className="mo-textarea" rows={2} placeholder={`Answer with specifics — earns +${POINTS.botAnswer} pts when the bot accepts it`}
-                        value={drafts[q.id] || ""} onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))} />
-                      <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ alignSelf: "flex-end", flexShrink: 0 }} disabled={!(drafts[q.id] || "").trim()} onClick={() => handleAnswer(q)}>
-                        <Send size={12} style={{ marginRight: 6 }} />Answer
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {groups.length === 0 && <EmptyState text={isManager ? "No open questions. Run a scan — if nothing comes back, the SOPs look complete." : "No open questions right now. Check back after the next scan."} />}
+        <div className="kb-grid">
+          {groups.map(g => (
+            <PlayingCard key={g.cardId}
+              tint={CARD_TINT}
+              pip="Q&A"
+              badges={g.openCount > 0 ? <span className="mo-pill mo-pill-warn">{g.openCount} pending</span> : <span className="mo-pill mo-pill-success">Ready to submit</span>}
+              icon={<HelpCircle size={24} />}
+              title={g.cardTitle}
+              footer={<span style={{ fontSize: 12, color: "var(--mo-muted)" }}>{COUNTRY_LABEL[g.country] || g.country} / {g.section}</span>}
+              onOpen={() => setSelectedCardId(g.cardId)}
+            />
           ))}
         </div>
       </div>
-
-      {/* Answered — awaiting submission to the card, grouped the same way */}
-      {answered.length > 0 && (
-        <div>
-          <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "4px 0 10px" }}>
-            Accepted answers — ready to add to the knowledge cards ({answered.length})
-          </div>
-          <div style={{ display: "grid", gap: 14 }}>
-            {answeredGroups.map(group => (
-              <div key={group.cardId} className="mo-card kb-card-anim">
-                <div style={{ height: 5, margin: "-16px -18px 16px", borderRadius: "18px 18px 0 0", background: "linear-gradient(90deg, #e8342a, #c81e1e, #e8342a)", backgroundSize: "200% 100%", animation: "kbAccentFlow 6s ease infinite" }} />
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid var(--mo-border)" }}>
-                  <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, flexShrink: 0 }}><BookOpen size={20} /></span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.cardTitle}</div>
-                    <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>{COUNTRY_LABEL[group.country] || group.country} / {group.section}</div>
-                  </div>
-                  <span className="mo-pill mo-pill-success" style={{ flexShrink: 0 }}>{group.items.length} accepted</span>
-                </div>
-                <div style={{ display: "grid", gap: 14 }}>
-                  {group.items.map((q, idx) => (
-                    <div key={q.id} style={{ paddingTop: idx > 0 ? 14 : 0, borderTop: idx > 0 ? "1px solid var(--mo-border)" : "none" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>{q.question}</span>
-                        <span style={{ fontSize: 12, color: "var(--mo-muted)", whiteSpace: "nowrap" }}>by <strong>{q.answeredByName}</strong> · {q.answeredAt}</span>
-                      </div>
-                      <div style={{ fontSize: 13, color: "var(--mo-ink)", whiteSpace: "pre-line", background: "var(--mo-surface-alt)", borderRadius: 10, padding: "8px 10px" }}>{q.answer}</div>
-                      {(isManager || q.answeredBy === currentUser.id) && (
-                        <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => onSubmitToCard(q)}>
-                          <PlusCircle size={12} style={{ marginRight: 6 }} />Submit to knowledge card (+{POINTS.submitToCard} pts)
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {submitted.length > 0 && (
         <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
