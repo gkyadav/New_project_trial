@@ -1666,7 +1666,7 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                                       ) : (
                                         <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #5a6b8c", flexShrink: 0 }} />
                                       )}
-                                      <span style={{ fontSize: 11.5, color: "#d5e2f7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {s.name}</span>
+                                      <span style={{ fontSize: 11.5, color: "#d5e2f7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
                                     </span>
                                     <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#4ade80" : isWip ? "#facc15" : "#5a6b8c", flexShrink: 0, marginLeft: 6 }}>{label}</span>
                                   </button>
