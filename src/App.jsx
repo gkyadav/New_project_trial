@@ -733,28 +733,34 @@ export default function App() {
             const Icon = item.icon;
             const active = view === item.id;
             return (
-              <button key={item.id} className="mo-navitem" style={active ? styles.navItemActive : styles.navItem} onClick={() => { setView(item.id); if (item.id === "bau") setPayView("hub"); }}>
-                <Icon size={17} style={{ marginRight: 10, flexShrink: 0 }} />
-                {item.label}
-              </button>
+              <div key={item.id}>
+                <button className="mo-navitem" style={active ? styles.navItemActive : styles.navItem} onClick={() => { setView(item.id); if (item.id === "bau") setPayView("hub"); }}>
+                  <Icon size={17} style={{ marginRight: 10, flexShrink: 0 }} />
+                  {item.label}
+                </button>
+
+                {item.id === "kb" && active && (
+                  <KbSidebarTree cards={kbCards} kbTab={kbTab} setKbTab={setKbTab}
+                    openCardId={kbOpenCardId} activeSection={kbActiveSection} onOpenCard={openKbCard}
+                    expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} />
+                )}
+
+                {item.id === "ai" && active && (
+                  <div style={{ marginLeft: 6, marginBottom: 6 }}>
+                    <button className="mo-navitem" style={{ ...(aiTab === "chat" ? styles.navItemActive : styles.navItem), padding: "9px 12px", fontSize: 12.5 }} onClick={() => setAiTab("chat")}>
+                      <Bot size={15} style={{ marginRight: 8, flexShrink: 0 }} />Chatbot
+                    </button>
+                    <button className="mo-navitem" style={{ ...(aiTab === "sopbot" ? styles.navItemActive : styles.navItem), padding: "9px 12px", fontSize: 12.5 }} onClick={() => setAiTab("sopbot")}>
+                      <Sparkles size={15} style={{ marginRight: 8, flexShrink: 0 }} />SOP completeness bot
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
 
-        {view === "kb" ? (
-          <KbSidebarTree cards={kbCards} kbTab={kbTab} setKbTab={setKbTab}
-            openCardId={kbOpenCardId} activeSection={kbActiveSection} onOpenCard={openKbCard}
-            expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} currentUser={currentUser} />
-        ) : view === "ai" ? (
-          <div style={{ marginTop: 20 }}>
-            <button className="mo-navitem" style={aiTab === "chat" ? styles.navItemActive : styles.navItem} onClick={() => setAiTab("chat")}>
-              <Bot size={16} style={{ marginRight: 10, flexShrink: 0 }} />Chatbot
-            </button>
-            <button className="mo-navitem" style={aiTab === "sopbot" ? styles.navItemActive : styles.navItem} onClick={() => setAiTab("sopbot")}>
-              <Sparkles size={16} style={{ marginRight: 10, flexShrink: 0 }} />SOP completeness bot
-            </button>
-          </div>
-        ) : (
+        {view !== "kb" && view !== "ai" && (
           <div style={styles.regionLegend}>
             <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
             {Object.values(REGIONS).map(r => (
@@ -765,6 +771,11 @@ export default function App() {
             ))}
           </div>
         )}
+
+        <div style={{ marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{currentUser.role === "admin" ? "Team lead" : "Team member"}</div>
+          <div style={{ fontSize: 11, color: "#9fb6dd" }}>{currentUser.role === "admin" ? "Reviewer · Publisher" : "Editor · All sections"}</div>
+        </div>
       </aside>
 
       <div style={styles.main}>
@@ -1475,13 +1486,12 @@ const KB_TREE_DEPTS = [
   { id: "logistics", label: "Logistics" },
 ];
 
-function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOpenCard, expanded, setExpanded, currentUser }) {
+function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOpenCard, expanded, setExpanded }) {
   function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
 
   return (
-    <div style={{ marginTop: 20, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ overflowY: "auto", flex: 1, paddingRight: 4 }}>
-        {KB_TREE_REGIONS.map(region => {
+    <div style={{ marginLeft: 6, marginBottom: 6 }}>
+      {KB_TREE_REGIONS.map(region => {
           const regionKey = `r:${region.id}`;
           const regionCards = cards.filter(c => c.country === region.id);
           const regionOpen = !!expanded[regionKey];
@@ -1557,12 +1567,6 @@ function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOp
             </div>
           );
         })}
-      </div>
-
-      <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{currentUser.role === "admin" ? "Team lead" : "Team member"}</div>
-        <div style={{ fontSize: 11, color: "#9fb6dd" }}>{currentUser.role === "admin" ? "Reviewer · Publisher" : "Editor · All sections"}</div>
-      </div>
     </div>
   );
 }
