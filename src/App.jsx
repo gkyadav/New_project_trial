@@ -1404,6 +1404,18 @@ function KbBot({ cards, currentUser }) {
 /* The SOP completeness bot interrogates the knowledge base: it scans every
    card for gaps, asks the team, and turns accepted answers into card
    revisions. Answers earn points; the leaderboard keeps it competitive. */
+/* Group questions by their parent knowledge card so a card with several
+   open questions reads as one panel instead of N separate loose boxes. */
+function groupQuestionsByCard(list) {
+  const order = [];
+  const map = new Map();
+  list.forEach(q => {
+    if (!map.has(q.cardId)) { map.set(q.cardId, { cardId: q.cardId, cardTitle: q.cardTitle, country: q.country, section: q.section, items: [] }); order.push(q.cardId); }
+    map.get(q.cardId).items.push(q);
+  });
+  return order.map(id => map.get(id));
+}
+
 function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer, onSubmitToCard, onDismiss }) {
   const [drafts, setDrafts] = useState({});
   const [feedback, setFeedback] = useState({});
@@ -1412,6 +1424,8 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
   const open = questions.filter(q => q.status === "open");
   const answered = questions.filter(q => q.status === "answered");
   const submitted = questions.filter(q => q.status === "submitted");
+  const openGroups = groupQuestionsByCard(open);
+  const answeredGroups = groupQuestionsByCard(answered);
 
   const totals = {};
   pointsLedger.forEach(p => { totals[p.userId] = (totals[p.userId] || 0) + p.points; });
@@ -1469,61 +1483,77 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
         </div>
       </div>
 
-      {/* Open questions */}
+      {/* Open questions — one panel per knowledge card */}
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "4px 0 10px" }}>
           Open questions ({open.length})
         </div>
         {open.length === 0 && <EmptyState text={isManager ? "No open questions. Run a scan — if nothing comes back, the SOPs look complete." : "No open questions right now. Check back after the next scan."} />}
-        <div style={{ display: "grid", gap: 12 }}>
-          {open.map(q => (
-            <div key={q.id} className="mo-card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{q.cardTitle} · {COUNTRY_LABEL[q.country] || q.country}/{q.section}</span>
-                {isManager && <button className="mo-btn mo-btn-sm" onClick={() => onDismiss(q)}><XCircle size={12} style={{ marginRight: 4 }} />Dismiss</button>}
+        <div style={{ display: "grid", gap: 14 }}>
+          {openGroups.map(group => (
+            <div key={group.cardId} className="mo-card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid var(--mo-border)", flexWrap: "wrap" }}>
+                <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{group.cardTitle} · {COUNTRY_LABEL[group.country] || group.country}/{group.section}</span>
+                <span className="mo-pill mo-pill-neutral">{group.items.length} open</span>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
-                <div className="bot-bubble" style={{ maxWidth: "100%" }}>{q.question}</div>
-              </div>
-              {feedback[q.id] && (
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
-                  <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
-                  <div className="bot-bubble" style={{ maxWidth: "100%", color: "var(--mo-warn)" }}>{feedback[q.id]}</div>
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <textarea className="mo-textarea" rows={2} placeholder={`Answer with specifics — earns +${POINTS.botAnswer} pts when the bot accepts it`}
-                  value={drafts[q.id] || ""} onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))} />
-                <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ alignSelf: "flex-end", flexShrink: 0 }} disabled={!(drafts[q.id] || "").trim()} onClick={() => handleAnswer(q)}>
-                  <Send size={12} style={{ marginRight: 6 }} />Answer
-                </button>
+              <div style={{ display: "grid", gap: 14 }}>
+                {group.items.map((q, idx) => (
+                  <div key={q.id} style={{ paddingTop: idx > 0 ? 14 : 0, borderTop: idx > 0 ? "1px solid var(--mo-border)" : "none" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)", flexShrink: 0 }}><HelpCircle size={14} /></span>
+                      <div className="bot-bubble" style={{ maxWidth: "100%", flex: 1 }}>{q.question}</div>
+                      {isManager && <button className="mo-btn mo-btn-sm" style={{ flexShrink: 0 }} onClick={() => onDismiss(q)} title="Dismiss"><XCircle size={12} /></button>}
+                    </div>
+                    {feedback[q.id] && (
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
+                        <span className="bot-avatar" style={{ background: "linear-gradient(135deg, #e8342a, #c81e1e)" }}><HelpCircle size={14} /></span>
+                        <div className="bot-bubble" style={{ maxWidth: "100%", color: "var(--mo-warn)" }}>{feedback[q.id]}</div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <textarea className="mo-textarea" rows={2} placeholder={`Answer with specifics — earns +${POINTS.botAnswer} pts when the bot accepts it`}
+                        value={drafts[q.id] || ""} onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))} />
+                      <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ alignSelf: "flex-end", flexShrink: 0 }} disabled={!(drafts[q.id] || "").trim()} onClick={() => handleAnswer(q)}>
+                        <Send size={12} style={{ marginRight: 6 }} />Answer
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Answered — awaiting submission to the card */}
+      {/* Answered — awaiting submission to the card, grouped the same way */}
       {answered.length > 0 && (
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", margin: "4px 0 10px" }}>
             Accepted answers — ready to add to the knowledge cards ({answered.length})
           </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {answered.map(q => (
-              <div key={q.id} className="mo-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                  <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{q.cardTitle} · {COUNTRY_LABEL[q.country] || q.country}/{q.section}</span>
-                  <span style={{ fontSize: 12, color: "var(--mo-muted)" }}>answered by <strong>{q.answeredByName}</strong> · {q.answeredAt}</span>
+          <div style={{ display: "grid", gap: 14 }}>
+            {answeredGroups.map(group => (
+              <div key={group.cardId} className="mo-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid var(--mo-border)", flexWrap: "wrap" }}>
+                  <span className="bot-source"><BookOpen size={11} style={{ marginRight: 4 }} />{group.cardTitle} · {COUNTRY_LABEL[group.country] || group.country}/{group.section}</span>
+                  <span className="mo-pill mo-pill-success">{group.items.length} accepted</span>
                 </div>
-                <div style={{ fontSize: 12.5, color: "var(--mo-muted)", marginBottom: 4 }}>{q.question}</div>
-                <div style={{ fontSize: 13, color: "var(--mo-ink)", whiteSpace: "pre-line", background: "var(--mo-surface-alt)", borderRadius: 10, padding: "8px 10px" }}>{q.answer}</div>
-                {(isManager || q.answeredBy === currentUser.id) && (
-                  <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => onSubmitToCard(q)}>
-                    <PlusCircle size={12} style={{ marginRight: 6 }} />Submit to knowledge card (+{POINTS.submitToCard} pts)
-                  </button>
-                )}
+                <div style={{ display: "grid", gap: 14 }}>
+                  {group.items.map((q, idx) => (
+                    <div key={q.id} style={{ paddingTop: idx > 0 ? 14 : 0, borderTop: idx > 0 ? "1px solid var(--mo-border)" : "none" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>{q.question}</span>
+                        <span style={{ fontSize: 12, color: "var(--mo-muted)", whiteSpace: "nowrap" }}>by <strong>{q.answeredByName}</strong> · {q.answeredAt}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--mo-ink)", whiteSpace: "pre-line", background: "var(--mo-surface-alt)", borderRadius: 10, padding: "8px 10px" }}>{q.answer}</div>
+                      {(isManager || q.answeredBy === currentUser.id) && (
+                        <button className="mo-btn mo-btn-sm mo-btn-primary" style={{ marginTop: 10 }} onClick={() => onSubmitToCard(q)}>
+                          <PlusCircle size={12} style={{ marginRight: 6 }} />Submit to knowledge card (+{POINTS.submitToCard} pts)
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
