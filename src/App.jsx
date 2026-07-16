@@ -767,7 +767,7 @@ export default function App() {
 
                 {item.id === "kb" && active && (
                   <KbSidebarTree cards={kbCards} kbTab={kbShowSummary ? null : kbTab} kbDept={kbDept} onSelectRegion={selectKbRegion} onSelectDept={selectKbDept}
-                    openCardId={kbOpenCardId} activeSection={kbActiveSection} onOpenCard={openKbCard}
+                    openCardId={kbOpenCardId} onOpenCard={openKbCard}
                     expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} />
                 )}
 
@@ -803,6 +803,13 @@ export default function App() {
           <div style={{ fontSize: 11, color: "var(--mo-muted)" }}>{currentUser.role === "admin" ? "Reviewer · Publisher" : "Editor · All sections"}</div>
         </div>
       </aside>
+
+      {view === "kb" && kbOpenCardId && (() => {
+        const openCard = kbCards.find(c => c.id === kbOpenCardId);
+        return openCard ? (
+          <KbSectionOutline card={openCard} activeSection={kbActiveSection} setActiveSection={setKbActiveSection} />
+        ) : null;
+      })()}
 
       <div style={styles.main}>
         <header style={styles.header}>
@@ -1627,7 +1634,7 @@ function KbSummaryDashboard({ cards, onSelectRegion }) {
    open card all get the same tint so the whole path reads as one thread. */
 const KB_ACTIVE_STYLE = { background: "linear-gradient(135deg, rgba(232,52,42,0.1), rgba(200,30,30,0.16))", boxShadow: "inset 0 0 0 1px rgba(232,52,42,0.35)" };
 
-function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, openCardId, activeSection, onOpenCard, expanded, setExpanded }) {
+function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, openCardId, onOpenCard, expanded, setExpanded }) {
   function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
 
   return (
@@ -1657,9 +1664,6 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                     </button>
 
                     {deptOpen && deptCards.map(card => {
-                      const cardKey = `c:${card.id}`;
-                      const cardOpen = !!expanded[cardKey];
-                      const steps = cardSteps(card);
                       const cardActive = openCardId === card.id;
                       return (
                         <div key={card.id} style={{ marginLeft: 10, marginBottom: 4 }}>
@@ -1672,32 +1676,6 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                               <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#16a34a" : "#94a3b8" }} />
                             </div>
                           </button>
-
-                          {cardOpen && (
-                            <div style={{ marginLeft: 10, marginTop: 2 }}>
-                              {steps.map((s, i) => {
-                                const isWip = openCardId === card.id && activeSection === i && s.status !== "done";
-                                const label = s.status === "done" ? "DONE" : isWip ? "WIP" : "·";
-                                return (
-                                  <button key={i} onClick={() => onOpenCard(region.id, card, i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: isWip ? "rgba(232,52,42,0.08)" : "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
-                                    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                                      {s.status === "done" ? (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                          <Check size={9} color="#fff" />
-                                        </span>
-                                      ) : isWip ? (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "var(--mo-accent)", flexShrink: 0 }} />
-                                      ) : (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #94a3b8", flexShrink: 0 }} />
-                                      )}
-                                      <span style={{ fontSize: 11.5, color: "#334155", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
-                                    </span>
-                                    <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#16a34a" : isWip ? "var(--mo-accent)" : "var(--mo-muted)", flexShrink: 0, marginLeft: 6 }}>{label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -1711,6 +1689,42 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
           );
         })}
     </div>
+  );
+}
+
+/* Dedicated middle pane for the open card's 16 sections — keeps the region
+   tree free of clutter and gives the outline room to breathe on its own. */
+function KbSectionOutline({ card, activeSection, setActiveSection }) {
+  const steps = cardSteps(card);
+  return (
+    <aside style={styles.sectionPane}>
+      <div style={{ fontSize: 11, fontWeight: 900, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Sections</div>
+      <div style={{ fontWeight: 900, fontSize: 14, color: "var(--mo-ink)", marginBottom: 10, lineHeight: 1.3 }}>{card.title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1, height: 6, background: "rgba(15,23,42,0.08)", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "linear-gradient(90deg, var(--mo-success), #1FBE84)" : "linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))", transition: "width 0.5s ease" }} />
+        </div>
+        <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--mo-muted)", whiteSpace: "nowrap" }}>{card.doneSections}/16</span>
+      </div>
+      <div style={{ display: "grid", gap: 2, overflowY: "auto", flex: 1 }}>
+        {steps.map((s, i) => {
+          const isActive = i === activeSection;
+          const isDone = s.status === "done";
+          return (
+            <button key={i} onClick={() => setActiveSection(i)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", border: "none", borderLeft: `3px solid ${isActive ? "var(--mo-accent)" : "transparent"}`, background: isActive ? "rgba(232,52,42,0.06)" : "none", borderRadius: 6, padding: "7px 8px", cursor: "pointer", textAlign: "left", transition: "background 0.15s ease" }}>
+              {isDone ? (
+                <span style={{ width: 16, height: 16, borderRadius: "50%", background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Check size={10} color="#fff" />
+                </span>
+              ) : (
+                <span style={{ width: 16, height: 16, borderRadius: "50%", border: `1.5px solid ${isActive ? "var(--mo-accent)" : "#94a3b8"}`, flexShrink: 0 }} />
+              )}
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: isActive ? "var(--mo-accent-2)" : "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 
@@ -1768,13 +1782,15 @@ function CountryKB({ country, department, cards, revisions, users, currentUser, 
       )}
 
       {openCard && (
-        <KbCard key={openCard.id} card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
-          isManager={isManager} currentUser={currentUser} onPublish={onPublish} onUnpublish={onUnpublish}
-          onDelete={c => { onDelete(c); setOpenCardId(null); }}
-          onSaveSteps={onSaveSteps} onSaveTitle={onSaveTitle} onMerge={onMerge} onReject={onReject}
-          onAssign={onAssign} onRequestUpdate={onRequestUpdate} onClearUpdate={onClearUpdate}
-          onBack={() => setOpenCardId(null)}
-          activeSection={activeSection} setActiveSection={setActiveSection} />
+        <div style={{ maxWidth: 820 }}>
+          <KbCard key={openCard.id} card={openCard} revisions={revisions.filter(r => r.cardId === openCard.id)} users={users}
+            isManager={isManager} currentUser={currentUser} onPublish={onPublish} onUnpublish={onUnpublish}
+            onDelete={c => { onDelete(c); setOpenCardId(null); }}
+            onSaveSteps={onSaveSteps} onSaveTitle={onSaveTitle} onMerge={onMerge} onReject={onReject}
+            onAssign={onAssign} onRequestUpdate={onRequestUpdate} onClearUpdate={onClearUpdate}
+            onBack={() => setOpenCardId(null)}
+            activeSection={activeSection} setActiveSection={setActiveSection} />
+        </div>
       )}
     </div>
   );
@@ -1884,47 +1900,38 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
-        {steps.map((s, i) => {
-          const isActive = i === activeSection;
-          const isDone = s.status === "done";
-          const badgeBg = isDone ? "linear-gradient(135deg, var(--mo-success), #1FBE84)" : isActive ? `linear-gradient(135deg, ${dc1}, ${dc2})` : "rgba(0,0,0,0.06)";
-          return (
-            <div key={i} className="kb-section-anim" style={{ animationDelay: `${Math.min(i, 10) * 35}ms`, borderRadius: 12, border: `1px solid ${isActive ? `${dc1}59` : "var(--mo-border)"}`, overflow: "hidden", background: isActive ? `${dc1}0a` : "var(--mo-surface-strong)", transition: "border-color 0.25s ease, background 0.25s ease" }}>
-              <button onClick={() => setActiveSection(i)} className="kb-section-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 14px", borderLeft: `4px solid ${isDone ? "var(--mo-success)" : isActive ? dc1 : "var(--mo-border)"}`, textAlign: "left", transition: "border-color 0.25s ease" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: badgeBg, color: isDone || isActive ? "#fff" : "var(--mo-muted)", fontSize: 11, fontWeight: 800, transition: "background 0.25s ease" }}>
-                    {isDone ? <Check size={13} /> : i + 1}
-                  </span>
-                  <strong style={{ fontSize: 13, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</strong>
+      {(() => {
+        const i = activeSection;
+        const s = steps[i] || {};
+        const isDone = s.status === "done";
+        return (
+          <div key={i} className="kb-section-anim" style={{ borderRadius: 12, border: `1px solid ${dc1}59`, overflow: "hidden", background: `${dc1}0a` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderLeft: `4px solid ${isDone ? "var(--mo-success)" : dc1}`, flexWrap: "wrap", gap: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isDone ? "linear-gradient(135deg, var(--mo-success), #1FBE84)" : `linear-gradient(135deg, ${dc1}, ${dc2})`, color: "#fff", fontSize: 11, fontWeight: 800 }}>
+                  {isDone ? <Check size={13} /> : i + 1}
                 </span>
-                <span className={`mo-pill ${isDone ? "mo-pill-success" : "mo-pill-neutral"}`} style={{ flexShrink: 0 }}>{isDone ? "Completed" : "Pending"}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Section {i + 1} of {steps.length}</span>
+              </span>
+              <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={toggleDone}>
+                <Check size={12} style={{ marginRight: 6 }} />{isDone ? "Mark pending" : "Mark done"}
               </button>
-
-              {isActive && (
-                <div className="kb-section-anim" style={{ padding: "0 14px 14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Section {i + 1} of {steps.length}</span>
-                    <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={toggleDone}>
-                      <Check size={12} style={{ marginRight: 6 }} />{isDone ? "Mark pending" : "Mark done"}
-                    </button>
-                  </div>
-                  <input className="mo-input" style={{ marginBottom: 8, fontWeight: 800 }} value={draftName} onChange={e => setDraftName(e.target.value)} placeholder="Section name" />
-                  <textarea className="mo-textarea" style={{ minHeight: 160 }} placeholder="Write this section — one point per line" value={draftDetail}
-                    onChange={e => setDraftDetail(e.target.value)}
-                    onInput={e => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} />
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                    <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={saveActiveSection}><Send size={12} style={{ marginRight: 6 }} />Save section</button>
-                    {i < steps.length - 1 && (
-                      <button className="mo-btn mo-btn-sm" onClick={() => setActiveSection(i + 1)}>Next section →</button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
-          );
-        })}
-      </div>
+            <div style={{ padding: "12px 14px 14px" }}>
+              <input className="mo-input" style={{ marginBottom: 8, fontWeight: 800 }} value={draftName} onChange={e => setDraftName(e.target.value)} placeholder="Section name" />
+              <textarea className="mo-textarea" style={{ minHeight: 260 }} placeholder="Write this section — one point per line" value={draftDetail}
+                onChange={e => setDraftDetail(e.target.value)}
+                onInput={e => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} />
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={saveActiveSection}><Send size={12} style={{ marginRight: 6 }} />Save section</button>
+                {i < steps.length - 1 && (
+                  <button className="mo-btn mo-btn-sm" onClick={() => setActiveSection(i + 1)}>Next section →</button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ fontSize: 11.5, color: "var(--mo-muted)", margin: "10px 0" }}>
         Owner: <strong style={{ color: "var(--mo-ink)" }}>{owner ? `${owner.name} · ${owner.title}` : card.author}</strong> · created by {card.author} · updated {card.updatedAt}
@@ -2218,6 +2225,7 @@ function EmptyState({ text }) {
 const styles = {
   appShell: { display: "flex", minHeight: "100vh", background: "transparent", fontFamily: "var(--mo-body)", color: "var(--mo-ink)" },
   sidebar: { width: 250, background: "#ffffff", color: "var(--mo-ink)", padding: "24px 16px", display: "flex", flexDirection: "column", flexShrink: 0, borderRight: "1px solid rgba(15,23,42,0.08)" },
+  sectionPane: { width: 260, background: "#fbfbfc", padding: "20px 14px", display: "flex", flexDirection: "column", flexShrink: 0, borderRight: "1px solid rgba(15,23,42,0.08)", overflowY: "auto" },
   brand: { display: "flex", alignItems: "center", gap: 12 },
   brandMark: { display: "flex", alignItems: "center" },
   brandDot: { width: 14, height: 14, borderRadius: "50%", display: "inline-block", border: "2px solid #fff" },
@@ -2350,7 +2358,6 @@ button, input, select, textarea { font-family: inherit; }
 .kb-card-anim { animation: kbFadeInUp 0.35s ease; }
 @keyframes kbAccentFlow { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 .kb-section-anim { opacity: 0; animation: kbFadeInUp 0.4s ease forwards; }
-.kb-section-row:hover { background: rgba(0,0,0,0.02); }
 .kb-addcard { border: 2px dashed rgba(232,52,42,0.35); background: rgba(255,255,255,0.55); justify-content: center; }
 .kb-addcard::before, .kb-addcard::after { display: none; }
 .kb-addcard:hover { transform: translateY(-5px); border-color: var(--mo-accent); box-shadow: 0 26px 70px rgba(35,56,86,0.2); }
