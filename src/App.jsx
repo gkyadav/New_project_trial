@@ -764,7 +764,7 @@ export default function App() {
                 </button>
 
                 {item.id === "kb" && active && (
-                  <KbSidebarTree cards={kbCards} kbTab={kbTab} kbDept={kbDept} onSelectRegion={selectKbRegion} onSelectDept={selectKbDept}
+                  <KbSidebarTree cards={kbCards} kbTab={kbShowSummary ? null : kbTab} kbDept={kbDept} onSelectRegion={selectKbRegion} onSelectDept={selectKbDept}
                     openCardId={kbOpenCardId} activeSection={kbActiveSection} onOpenCard={openKbCard}
                     expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} />
                 )}
