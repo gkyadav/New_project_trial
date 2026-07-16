@@ -232,6 +232,7 @@ export default function App() {
   const [kbTab, setKbTab] = useState("uae");
   const [kbOpenCardId, setKbOpenCardId] = useState(null);
   const [kbActiveSection, setKbActiveSection] = useState(0);
+  const [kbShowSummary, setKbShowSummary] = useState(true);
   const [kbTreeExpanded, setKbTreeExpanded] = useState({});
   const [aiTab, setAiTab] = useState("chat");
   const [payView, setPayView] = useState("hub");
@@ -580,6 +581,7 @@ export default function App() {
     setView("kb");
     setKbTab(regionId);
     setKbOpenCardId(card.id);
+    setKbShowSummary(false);
     const steps = cardSteps(card);
     let idx = sectionIndex;
     if (idx == null) {
@@ -587,6 +589,13 @@ export default function App() {
       idx = firstPending === -1 ? 0 : firstPending;
     }
     setKbActiveSection(idx);
+  }
+
+  function selectKbRegion(regionId) {
+    setView("kb");
+    setKbTab(regionId);
+    setKbShowSummary(false);
+    setKbOpenCardId(null);
   }
 
   function mergeRevision(rev) {
@@ -734,13 +743,17 @@ export default function App() {
             const active = view === item.id;
             return (
               <div key={item.id}>
-                <button className="mo-navitem" style={active ? styles.navItemActive : styles.navItem} onClick={() => { setView(item.id); if (item.id === "bau") setPayView("hub"); }}>
+                <button className="mo-navitem" style={active ? styles.navItemActive : styles.navItem} onClick={() => {
+                  setView(item.id);
+                  if (item.id === "bau") setPayView("hub");
+                  if (item.id === "kb") { setKbShowSummary(true); setKbOpenCardId(null); }
+                }}>
                   <Icon size={17} style={{ marginRight: 10, flexShrink: 0 }} />
                   {item.label}
                 </button>
 
                 {item.id === "kb" && active && (
-                  <KbSidebarTree cards={kbCards} kbTab={kbTab} setKbTab={setKbTab}
+                  <KbSidebarTree cards={kbCards} kbTab={kbTab} onSelectRegion={selectKbRegion}
                     openCardId={kbOpenCardId} activeSection={kbActiveSection} onOpenCard={openKbCard}
                     expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} />
                 )}
@@ -804,18 +817,22 @@ export default function App() {
           ) : (
             <PaymentsHub
               onOpenPaymentStatus={() => setPayView("status")}
-              onOpenKb={() => { setView("kb"); setKbTab("uae"); }}
+              onOpenKb={() => selectKbRegion("uae")}
               onLocked={name => pushToast(`"${name}" is coming next — we'll build this out as we proceed`)}
             />
           ))}
 
           {view === "kb" && (
-            <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
-              newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
-              onSaveSteps={saveCardSteps} onSaveTitle={saveCardTitle} onMerge={mergeRevision} onReject={rejectRevision}
-              onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest}
-              openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId}
-              activeSection={kbActiveSection} setActiveSection={setKbActiveSection} />
+            kbShowSummary && !kbOpenCardId ? (
+              <KbSummaryDashboard cards={kbCards} onSelectRegion={selectKbRegion} />
+            ) : (
+              <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
+                newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
+                onSaveSteps={saveCardSteps} onSaveTitle={saveCardTitle} onMerge={mergeRevision} onReject={rejectRevision}
+                onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest}
+                openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId}
+                activeSection={kbActiveSection} setActiveSection={setKbActiveSection} />
+            )
           )}
 
           {view === "ai" && (
@@ -1486,7 +1503,85 @@ const KB_TREE_DEPTS = [
   { id: "logistics", label: "Logistics" },
 ];
 
-function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOpenCard, expanded, setExpanded }) {
+/* Animated integer counter — eases 0 → value whenever value changes. */
+function CountUp({ value, duration = 700 }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    let raf;
+    const start = performance.now();
+    function tick(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(value * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <>{display}</>;
+}
+
+function KbSummaryDashboard({ cards, onSelectRegion }) {
+  const globalCards = cards.filter(c => c.country === "global");
+  const globalPublished = globalCards.filter(c => c.status === "published").length;
+  const totalCreated = cards.length;
+  const totalPublished = cards.filter(c => c.status === "published").length;
+
+  const countryStats = KB_TREE_REGIONS.filter(r => r.id !== "global").map(region => {
+    const regionCards = cards.filter(c => c.country === region.id);
+    const depts = KB_TREE_DEPTS.map(dept => {
+      const deptCards = regionCards.filter(c => c.department === dept.id);
+      return { ...dept, created: deptCards.length, published: deptCards.filter(c => c.status === "published").length };
+    });
+    return { ...region, created: regionCards.length, published: regionCards.filter(c => c.status === "published").length, depts };
+  });
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className="mo-card kb-summary-anim" style={{ marginBottom: 20, textAlign: "center", padding: "28px 20px" }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 8 }}>Knowledge base overview</div>
+        <div style={{ fontSize: 40, fontWeight: 900, color: "var(--mo-ink)" }}>
+          <CountUp value={totalPublished} /><span style={{ color: "var(--mo-muted)", fontSize: 22 }}> / <CountUp value={totalCreated} /></span>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--mo-muted)", fontWeight: 700 }}>SOPs published across your team</div>
+      </div>
+
+      <div className="kb-summary-grid">
+        <button className="mo-card mo-clickable kb-summary-anim" style={{ textAlign: "left", animationDelay: "0ms" }} onClick={() => onSelectRegion("global")}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Global Policy</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, margin: "8px 0 4px" }}>
+            <span style={{ fontSize: 30, fontWeight: 900, color: "var(--mo-ink)" }}><CountUp value={globalCards.length} /></span>
+            <span style={{ fontSize: 13, color: "var(--mo-muted)", fontWeight: 700 }}>created</span>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--mo-success)", marginBottom: 8 }}>{globalPublished} published</div>
+          <div className="kb-summary-bar"><div className="kb-summary-bar-fill" style={{ width: `${globalCards.length ? Math.round((globalPublished / globalCards.length) * 100) : 0}%` }} /></div>
+        </button>
+
+        {countryStats.map((region, idx) => (
+          <button key={region.id} className="mo-card mo-clickable kb-summary-anim" style={{ textAlign: "left", animationDelay: `${(idx + 1) * 90}ms` }} onClick={() => onSelectRegion(region.id)}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 900, color: "var(--mo-ink)" }}>{region.label}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--mo-success)" }}>{region.published}/{region.created} published</span>
+            </div>
+            <div style={{ display: "grid", gap: 9 }}>
+              {region.depts.map(d => (
+                <div key={d.id}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontWeight: 700, color: "var(--mo-muted)", marginBottom: 3 }}>
+                    <span>{d.label}</span>
+                    <span>{d.published}/{d.created}</span>
+                  </div>
+                  <div className="kb-summary-bar"><div className="kb-summary-bar-fill" style={{ width: `${d.created ? Math.round((d.published / d.created) * 100) : 0}%` }} /></div>
+                </div>
+              ))}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KbSidebarTree({ cards, kbTab, onSelectRegion, openCardId, activeSection, onOpenCard, expanded, setExpanded }) {
   function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
 
   return (
@@ -1497,7 +1592,7 @@ function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOp
           const regionOpen = !!expanded[regionKey];
           return (
             <div key={region.id} style={{ marginBottom: 4 }}>
-              <button onClick={() => { toggle(regionKey); setKbTab(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: region.id === kbTab ? "rgba(255,255,255,0.08)" : "none", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff" }}>
+              <button onClick={() => { toggle(regionKey); onSelectRegion(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: region.id === kbTab ? "rgba(255,255,255,0.08)" : "none", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff" }}>
                 <span style={{ fontSize: 13.5, fontWeight: 800 }}>{region.label}</span>
                 <span style={{ fontSize: 11.5, color: "#9fb6dd", fontWeight: 700 }}>{regionCards.length}</span>
               </button>
@@ -1574,7 +1669,15 @@ function KbSidebarTree({ cards, kbTab, setKbTab, openCardId, activeSection, onOp
 function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onSaveSteps, onSaveTitle, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, openCardId, setOpenCardId, activeSection, setActiveSection }) {
   const [showForm, setShowForm] = useState(false);
   const isManager = currentUser.role === "admin";
+  const countryCards = cards.filter(c => c.country === country);
   const openCard = cards.find(c => c.id === openCardId && c.country === country);
+
+  function openFromGrid(card) {
+    const steps = cardSteps(card);
+    const firstPending = steps.findIndex(s => s.status !== "done");
+    setActiveSection(firstPending === -1 ? 0 : firstPending);
+    setOpenCardId(card.id);
+  }
 
   return (
     <div>
@@ -1585,10 +1688,20 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
       </div>
 
       {!openCard && (
-        <div style={{ textAlign: "center", padding: "56px 0", color: "var(--mo-muted)" }}>
-          <BookOpen size={28} style={{ opacity: 0.5, marginBottom: 10 }} />
-          <div style={{ fontSize: 13.5 }}>Pick a card from the left to view or edit its sections.</div>
-        </div>
+        countryCards.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "56px 0", color: "var(--mo-muted)" }}>
+            <BookOpen size={28} style={{ opacity: 0.5, marginBottom: 10 }} />
+            <div style={{ fontSize: 13.5 }}>No cards here yet — add the first one.</div>
+          </div>
+        ) : (
+          <div className="kb-grid">
+            {countryCards.map(c => (
+              <KbPlayingCard key={c.id} card={c} users={users} currentUser={currentUser}
+                pendingCount={revisions.filter(r => r.cardId === c.id && r.status === "pending").length}
+                onOpen={() => openFromGrid(c)} />
+            ))}
+          </div>
+        )
       )}
 
       {showForm && (
@@ -2187,6 +2300,11 @@ body {
 .kb-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; font-size: 10px; font-weight: 900; flex-shrink: 0; }
 .kb-owner-name { font-size: 11.5px; font-weight: 800; color: var(--mo-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-pcard-badges { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; }
+.kb-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.kb-summary-anim { opacity: 0; animation: kbFadeInUp 0.5s ease forwards; }
+@keyframes kbFadeInUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.kb-summary-bar { width: 100%; height: 6px; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden; }
+.kb-summary-bar-fill { height: 100%; background: linear-gradient(90deg, var(--mo-accent), var(--mo-success)); border-radius: 3px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
 .kb-addcard { border: 2px dashed rgba(79,70,229,0.35); background: rgba(255,255,255,0.55); justify-content: center; }
 .kb-addcard::before, .kb-addcard::after { display: none; }
 .kb-addcard:hover { transform: translateY(-5px); border-color: var(--mo-accent); box-shadow: 0 26px 70px rgba(35,56,86,0.2); }
