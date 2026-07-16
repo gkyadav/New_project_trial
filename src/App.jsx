@@ -853,7 +853,7 @@ export default function App() {
               {aiTab === null && (
                 <div className="kb-grid">
                   <PlayingCard
-                    tint={["#e8342a", "#c81e1e"]}
+                    tint={CARD_TINT}
                     pip="AI"
                     icon={<Bot size={24} />}
                     title="Chatbot"
@@ -861,7 +861,7 @@ export default function App() {
                     onOpen={() => setAiTab("chat")}
                   />
                   <PlayingCard
-                    tint={["#18a558", "#0f7a3d"]}
+                    tint={CARD_TINT}
                     pip="AI"
                     icon={<Sparkles size={24} />}
                     title="SOP completeness bot"
@@ -1115,7 +1115,7 @@ function PaymentsHub({ onOpenPaymentStatus, onOpenKb, onLocked }) {
           const Icon = card.icon;
           return (
             <PlayingCard key={card.id}
-              tint={PAY_TINT[card.tint] || PAY_TINT.blue}
+              tint={CARD_TINT}
               pip="PAY"
               icon={<Icon size={24} />}
               title={card.title}
@@ -1242,22 +1242,11 @@ function PaymentStatus({ payments, currentUser, onChange }) {
 
 const COUNTRY_LABEL = { uae: "UAE", ksa: "KSA", egypt: "Egypt", global: "Global" };
 
-const DEPT_TINT = {
-  country_policies: ["#e8342a", "#c81e1e"],
-  fulfillment: ["#18a558", "#0f7a3d"],
-  logistics: ["#64748b", "#475569"],
-};
-const deptTint = department => DEPT_TINT[department] || DEPT_TINT.country_policies;
-const kbTint = card => deptTint(card.department);
-
-const PAY_TINT = {
-  blue: ["#e8342a", "#c81e1e"],
-  green: ["#18a558", "#0f7a3d"],
-  orange: ["#94a3b8", "#64748b"],
-  purple: ["#dc2626", "#991b1b"],
-  cyan: ["#64748b", "#334155"],
-  pink: ["#059669", "#047857"],
-};
+/* Every card tile uses the same red base tint — color is reserved for status
+   (published/done/success), never for card category or identity. */
+const CARD_TINT = ["#e8342a", "#c81e1e"];
+const deptTint = () => CARD_TINT;
+const kbTint = () => CARD_TINT;
 
 /* Shared flip-card tile: used for knowledge cards, payment workstreams and
    the AI workspace picker so every "choose one of these" screen looks the same. */
