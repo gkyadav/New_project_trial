@@ -1451,7 +1451,7 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
               <span style={{ width: 22, fontWeight: 900, color: i === 0 && b.pts > 0 ? "var(--mo-gold)" : "var(--mo-muted)" }}>#{i + 1}</span>
               <span style={{ flex: 1, fontWeight: 700 }}>{b.user.name}{b.user.id === currentUser.id && <span style={{ color: "var(--mo-muted)", fontWeight: 600 }}> (you)</span>}</span>
               <div className="mo-progress-track" style={{ width: 160 }}>
-                <div className="mo-progress-fill" style={{ width: `${board[0].pts ? (b.pts / board[0].pts) * 100 : 0}%`, background: "linear-gradient(90deg, var(--mo-gold), var(--mo-coral))" }} />
+                <div className="mo-progress-fill" style={{ width: `${board[0].pts ? (b.pts / board[0].pts) * 100 : 0}%`, background: "linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))" }} />
               </div>
               <span style={{ fontWeight: 900, minWidth: 52, textAlign: "right" }}>{b.pts} pts</span>
             </div>
@@ -1596,7 +1596,7 @@ function KbSummaryDashboard({ cards, onSelectRegion }) {
             <span style={{ fontSize: 13, color: "var(--mo-muted)", fontWeight: 700 }}>created</span>
           </div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--mo-success)", marginBottom: 8 }}>{globalPublished} published</div>
-          <div className="kb-summary-bar"><div className="kb-summary-bar-fill" style={{ width: `${globalCards.length ? Math.round((globalPublished / globalCards.length) * 100) : 0}%` }} /></div>
+          <div className="kb-summary-bar"><div className="kb-summary-bar-fill" style={{ width: `${globalCards.length ? Math.round((globalPublished / globalCards.length) * 100) : 0}%`, background: globalCards.length && globalPublished === globalCards.length ? "linear-gradient(90deg, var(--mo-success), #1FBE84)" : "linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))" }} /></div>
         </button>
 
         {countryStats.map((region, idx) => (
@@ -1612,7 +1612,7 @@ function KbSummaryDashboard({ cards, onSelectRegion }) {
                     <span>{d.label}</span>
                     <span>{d.published}/{d.created}</span>
                   </div>
-                  <div className="kb-summary-bar"><div className="kb-summary-bar-fill" style={{ width: `${d.created ? Math.round((d.published / d.created) * 100) : 0}%` }} /></div>
+                  <div className="kb-summary-bar"><div className="kb-summary-bar-fill" style={{ width: `${d.created ? Math.round((d.published / d.created) * 100) : 0}%`, background: d.created && d.published === d.created ? "linear-gradient(90deg, var(--mo-success), #1FBE84)" : "linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))" }} /></div>
                 </div>
               ))}
             </div>
@@ -2346,7 +2346,7 @@ button, input, select, textarea { font-family: inherit; }
 .kb-summary-anim { opacity: 0; animation: kbFadeInUp 0.5s ease forwards; }
 @keyframes kbFadeInUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 .kb-summary-bar { width: 100%; height: 6px; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden; }
-.kb-summary-bar-fill { height: 100%; background: linear-gradient(90deg, var(--mo-accent), var(--mo-success)); border-radius: 3px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
+.kb-summary-bar-fill { height: 100%; border-radius: 3px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
 .kb-card-anim { animation: kbFadeInUp 0.35s ease; }
 @keyframes kbAccentFlow { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 .kb-section-anim { opacity: 0; animation: kbFadeInUp 0.4s ease forwards; }
