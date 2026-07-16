@@ -743,7 +743,7 @@ export default function App() {
 
       <aside style={styles.sidebar}>
         <div style={styles.brand}>
-          <div style={styles.sidebarNoonBadge}>noon</div>
+          <img src="/noon-minutes-logo.png" alt="noon minutes" style={{ height: 34, width: "auto", display: "block" }} />
           <div>
             <div style={styles.brandSub}>Ops console</div>
           </div>
@@ -945,7 +945,7 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, onTempPassword, restoring }) {
 
       <header className="portal-header">
         <div className="brand-lockup portal-brand">
-          <span className="noon-mark">noon</span>
+          <img className="noon-mark" src="/noon-minutes-logo.png" alt="noon minutes" />
           <div>
             <strong>noon Ops Console</strong>
             <span>BAU &amp; Adhoc Operations</span>
@@ -985,7 +985,7 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, onTempPassword, restoring }) {
 
       <section className="portal-card-wrap">
         <div className="portal-card">
-          <span className="noon-mark card-mark">noon</span>
+          <img className="noon-mark card-mark" src="/noon-minutes-logo.png" alt="noon minutes" />
           <h2>noon Ops Console</h2>
           <p className="portal-card-subtitle">Secure Portal Access</p>
           <div className="card-rule" />
@@ -2189,7 +2189,6 @@ const styles = {
   brandDot: { width: 14, height: 14, borderRadius: "50%", display: "inline-block", border: "2px solid #fff" },
   brandName: { fontFamily: "var(--mo-display)", fontSize: 16, fontWeight: 900, color: "var(--mo-ink)" },
   brandSub: { fontSize: 11, fontWeight: 800, color: "var(--mo-muted)", marginTop: 2 },
-  sidebarNoonBadge: { fontFamily: "var(--mo-display)", fontWeight: 900, fontSize: 16, letterSpacing: -0.5, color: "#1A1A1A", background: "#FEDE00", padding: "6px 12px", borderRadius: 10, display: "inline-block", boxShadow: "0 8px 18px rgba(15,23,42,0.12)" },
   navItem: { display: "flex", alignItems: "center", width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, background: "transparent", border: "none", color: "#475569", fontSize: 13.5, fontWeight: 800, cursor: "pointer", marginBottom: 4 },
   navItemActive: { display: "flex", alignItems: "center", width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, background: "linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2))", border: "none", color: "#fff", fontSize: 13.5, cursor: "pointer", marginBottom: 4, fontWeight: 900, boxShadow: "0 12px 26px rgba(232,52,42,0.34)" },
   lockedHeading: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 900, color: "var(--mo-accent)", marginBottom: 8, paddingLeft: 14 },
@@ -2352,7 +2351,7 @@ button, input, select, textarea { font-family: inherit; }
 .brand-lockup.portal-brand { justify-self: start; }
 .brand-lockup strong { display: block; font-weight: 900; }
 .brand-lockup div > span { display: block; margin-top: 2px; color: rgba(255,255,255,0.74); font-size: 0.82rem; font-weight: 800; }
-.noon-mark { display: inline-grid; place-items: center; padding: 8px 14px; border-radius: 12px; background: #FEDE00; color: #1A1A1A; font-weight: 900; font-size: 1.05rem; letter-spacing: -0.5px; box-shadow: 0 14px 30px rgba(0,0,0,0.3); }
+.noon-mark { height: 40px; width: auto; display: block; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3)); }
 .region-pill { display: flex; align-items: center; gap: 14px; border: 1px solid rgba(255,255,255,0.2); border-radius: 999px; background: rgba(60,10,10,0.48); box-shadow: 0 18px 42px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.16); padding: 10px 20px; backdrop-filter: blur(18px); }
 .region-pill span { display: flex; align-items: center; gap: 8px; color: #fff; font-weight: 900; }
 .region-pill b { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: rgba(255,255,255,0.12); font-size: 0.85rem; }
