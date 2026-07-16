@@ -2216,7 +2216,7 @@ const styles = {
 };
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
 :root {
   --mo-bg: #f5f6f8;
   --mo-surface: rgba(255,255,255,0.96);
@@ -2237,14 +2237,20 @@ const CSS = `
   --mo-locked-bg: rgba(255,255,255,0.55);
   --mo-shadow: 0 12px 32px rgba(15,23,42,0.08);
   --mo-shadow-hover: 0 18px 44px rgba(15,23,42,0.12);
-  --mo-display: 'Inter', system-ui, 'Segoe UI', sans-serif;
-  --mo-body: 'Inter', system-ui, 'Segoe UI', sans-serif;
+  --mo-display: 'Plus Jakarta Sans', system-ui, 'Segoe UI', sans-serif;
+  --mo-body: 'Plus Jakarta Sans', system-ui, 'Segoe UI', sans-serif;
   --mo-mono: 'IBM Plex Mono', 'Consolas', monospace;
 }
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--mo-bg);
+  background:
+    linear-gradient(rgba(232,52,42,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232,52,42,0.05) 1px, transparent 1px),
+    radial-gradient(circle at top right, rgba(232,52,42,0.1), transparent 30%),
+    radial-gradient(circle at 55% 42%, rgba(200,30,30,0.06), transparent 36%),
+    var(--mo-bg);
+  background-size: 44px 44px, 44px 44px, auto, auto, auto;
   color: var(--mo-ink);
   font-family: var(--mo-body);
 }
