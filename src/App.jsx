@@ -773,10 +773,10 @@ export default function App() {
 
                 {item.id === "ai" && active && (
                   <div style={{ marginLeft: 6, marginBottom: 6 }}>
-                    <button className="mo-navitem" style={{ padding: "9px 12px", fontSize: 12.5, borderLeft: `3px solid ${aiTab === "chat" ? "var(--mo-accent)" : "transparent"}`, borderRadius: 8, color: aiTab === "chat" ? "var(--mo-accent-2)" : "#475569", ...(aiTab === "chat" ? KB_ACTIVE_STYLE : { background: "none" }) }} onClick={() => setAiTab("chat")}>
+                    <button className="mo-navitem" style={{ ...styles.navItem, padding: "9px 12px", fontSize: 12.5, border: "none", borderLeft: `3px solid ${aiTab === "chat" ? "var(--mo-accent)" : "transparent"}`, color: aiTab === "chat" ? "var(--mo-accent-2)" : "#475569", ...(aiTab === "chat" ? KB_ACTIVE_STYLE : { background: "none" }) }} onClick={() => setAiTab("chat")}>
                       <Bot size={15} style={{ marginRight: 8, flexShrink: 0 }} />Chatbot
                     </button>
-                    <button className="mo-navitem" style={{ padding: "9px 12px", fontSize: 12.5, borderLeft: `3px solid ${aiTab === "sopbot" ? "var(--mo-accent)" : "transparent"}`, borderRadius: 8, color: aiTab === "sopbot" ? "var(--mo-accent-2)" : "#475569", ...(aiTab === "sopbot" ? KB_ACTIVE_STYLE : { background: "none" }) }} onClick={() => setAiTab("sopbot")}>
+                    <button className="mo-navitem" style={{ ...styles.navItem, padding: "9px 12px", fontSize: 12.5, border: "none", borderLeft: `3px solid ${aiTab === "sopbot" ? "var(--mo-accent)" : "transparent"}`, color: aiTab === "sopbot" ? "var(--mo-accent-2)" : "#475569", ...(aiTab === "sopbot" ? KB_ACTIVE_STYLE : { background: "none" }) }} onClick={() => setAiTab("sopbot")}>
                       <Sparkles size={15} style={{ marginRight: 8, flexShrink: 0 }} />SOP completeness bot
                     </button>
                   </div>
