@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+{% block content %}
+<a class="mo-btn mo-btn-sm" style="margin-bottom:4px;" href="{{ url_for('payments.hub') }}">← Back to Payments</a>
+<p style="font-size:13.5px;color:var(--mo-muted);margin:14px 0;">
+  Mock workflow only — not connected to a real payment provider. Ordinary releases happen through the BAU checklist
+  with its own two-person confirmation; this table is a direct admin override for demo purposes only.
+</p>
+<div class="mo-table-wrap">
+  <table class="mo-table">
+    <thead><tr><th>Region</th><th>Customer</th><th>Amount</th><th>Status</th><th>Updated</th>{% if user.role == 'admin' %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+      {% for p in payments %}
+        <tr>
+          <td>
+            {% if p.region in regions %}
+              <span style="display:inline-flex;align-items:center;font-size:12.5px;color:var(--mo-ink);">
+                <span class="mo-region-swatch" style="background:{{ regions[p.region].color }};"></span>{{ regions[p.region].short }}
+              </span>
+            {% endif %}
+          </td>
+          <td style="font-weight:800;color:var(--mo-ink);">{{ p.customer }}</td>
+          <td class="mo-mono">{{ "{:,.0f}".format(p.amount) }} {{ p.currency }}</td>
+          <td><span class="mo-pill mo-pill-{{ {'pending':'warn','paid':'success','failed':'danger','disputed':'danger'}[p.status] }}">{{ status_label[p.status] }}</span></td>
+          <td class="mo-mono" style="font-size:12px;">{{ p.updatedAt }}</td>
+          {% if user.role == 'admin' %}
+            <td>
+              <form method="post" action="{{ url_for('payments.change_status', payment_id=p.id) }}">
+                <select class="mo-select" name="status" onchange="this.form.submit()">
+                  {% for s in ['pending', 'paid', 'failed', 'disputed'] %}
+                    <option value="{{ s }}" {{ 'selected' if p.status == s else '' }}>{{ status_label[s] }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

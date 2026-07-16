@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>noon Ops Console — Sign in</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<main class="portal-login">
+  <img class="portal-bg" src="{{ url_for('static', filename='images/login-hero.png') }}" alt="">
+  <div class="portal-overlay"></div>
+
+  <header class="portal-header">
+    <div class="brand-lockup portal-brand">
+      <img class="noon-mark" src="{{ url_for('static', filename='images/noon-minutes-logo.png') }}" alt="noon minutes">
+      <div><strong>noon Ops Console</strong><span>BAU &amp; Adhoc Operations</span></div>
+    </div>
+    <div class="region-pill" aria-label="Supported regions">
+      <span><b>AE</b> UAE</span><i></i><span><b>SA</b> KSA</span><i></i><span><b>EG</b> EGYPT</span>
+    </div>
+  </header>
+
+  <section class="portal-copy">
+    <h1>One Console for BAU and Adhoc Operations</h1>
+    <p>Regional email queues, AI-assisted replies, BAU checklists, knowledge base, access control and audit — unified across UAE, KSA and Egypt.</p>
+    <div class="feature-grid">
+      <article><span class="feature-icon blue">PAY</span><strong>Payments Hub</strong><small>Fulfillment and logistics workstreams</small></article>
+      <article><span class="feature-icon green">KB</span><strong>Knowledge Base</strong><small>Step-by-step SOP cards per country</small></article>
+      <article><span class="feature-icon orange">BOT</span><strong>KB Bot</strong><small>Answers straight from the SOP steps</small></article>
+      <article><span class="feature-icon purple">SOP</span><strong>SOP Completeness Bot</strong><small>Finds gaps, asks the team, fills SOPs</small></article>
+      <article><span class="feature-icon cyan">PTS</span><strong>Knowledge Points</strong><small>Earn points for every contribution</small></article>
+      <article><span class="feature-icon pink">AL</span><strong>Audit Log</strong><small>Every action tracked and traceable</small></article>
+    </div>
+    <div class="trust-bar">
+      <strong>Secure. Reliable. Compliant.</strong><span>Enterprise Security</span><span>ISO 27001 Compliant</span><span>Your Data is Protected</span>
+    </div>
+  </section>
+
+  <section class="portal-card-wrap">
+    <div class="portal-card">
+      <img class="noon-mark card-mark" src="{{ url_for('static', filename='images/noon-minutes-logo.png') }}" alt="noon minutes">
+      <h2>noon Ops Console</h2>
+      <p class="portal-card-subtitle">Secure Portal Access</p>
+      <div class="card-rule"></div>
+      <h3>Welcome back!</h3>
+      <p class="intro">Login to continue to your operations workspace.</p>
+
+      <div id="alert-box"></div>
+
+      <form id="step-email" class="portal-form">
+        <label for="login-email">Official noon email</label>
+        <div class="input-shell"><span>ID</span>
+          <input id="login-email" type="email" autocomplete="username" placeholder="yourname@noon.com" required>
+        </div>
+        <button type="submit">Send verification code <span>-&gt;</span></button>
+      </form>
+
+      <form id="step-code" class="portal-form" style="display:none;">
+        <label for="login-code">6-digit code</label>
+        <div class="input-shell"><span>OTP</span>
+          <input id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required>
+        </div>
+        <button type="submit">Verify &amp; sign in <span>-&gt;</span></button>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <button type="button" class="sso-button" id="use-different-email" style="width:auto;padding:6px 12px;font-size:12.5px;">Use a different email</button>
+          <button type="button" class="sso-button" id="resend-code" style="width:auto;padding:6px 12px;font-size:12.5px;">Resend code</button>
+        </div>
+      </form>
+
+      <form id="step-temp" class="portal-form" style="display:none;">
+        <label for="login-email-temp">Official noon email</label>
+        <div class="input-shell"><span>ID</span>
+          <input id="login-email-temp" type="email" autocomplete="username" placeholder="yourname@noon.com" required>
+        </div>
+        <label for="login-temp-pw">Temporary password</label>
+        <div class="input-shell"><span>PW</span>
+          <input id="login-temp-pw" type="password" autocomplete="current-password" placeholder="Ask Gaurav" required>
+        </div>
+        <button type="submit">Sign in <span>-&gt;</span></button>
+      </form>
+
+      <p class="support-copy" id="use-temp-link">
+        Email trouble? <a href="#" id="switch-to-temp">Use the temporary password</a> while OTP delivery is being fixed.
+      </p>
+      <p class="support-copy" id="back-to-otp-link" style="display:none;">
+        <a href="#" id="switch-to-email">Back to email code sign-in</a>
+      </p>
+      <p class="support-copy">Access is limited to noon.com team members added by Gaurav. New here? Ask Gaurav to add your noon ID first.</p>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient("{{ supabase_url }}", "{{ supabase_anon_key }}");
+
+const alertBox = document.getElementById("alert-box");
+const stepEmail = document.getElementById("step-email");
+const stepCode = document.getElementById("step-code");
+const stepTemp = document.getElementById("step-temp");
+const useTempLink = document.getElementById("use-temp-link");
+const backToOtpLink = document.getElementById("back-to-otp-link");
+let currentEmail = "";
+
+function showAlert(text, notice) {
+  alertBox.innerHTML = text
+    ? `<div class="portal-alert"${notice ? ' style="background:rgba(232,52,42,0.06);border-color:rgba(232,52,42,0.25);color:#c81e1e;"' : ""}>${text}</div>`
+    : "";
+}
+
+function showStep(step) {
+  stepEmail.style.display = step === "email" ? "grid" : "none";
+  stepCode.style.display = step === "code" ? "grid" : "none";
+  stepTemp.style.display = step === "temp" ? "grid" : "none";
+  useTempLink.style.display = step === "temp" ? "none" : "block";
+  backToOtpLink.style.display = step === "temp" ? "block" : "none";
+}
+
+async function establishSession(session) {
+  const res = await fetch("/auth/session", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: session.access_token }),
+  });
+  const data = await res.json();
+  if (!res.ok) { await supabase.auth.signOut(); showAlert(data.error); return; }
+  window.location.href = "/";
+}
+
+stepEmail.addEventListener("submit", async e => {
+  e.preventDefault();
+  currentEmail = document.getElementById("login-email").value.trim().toLowerCase();
+  if (!/^[^\s@]+@noon\.com$/.test(currentEmail)) { showAlert("Use your official noon.com email address."); return; }
+  showAlert("");
+  const { error } = await supabase.auth.signInWithOtp({ email: currentEmail, options: { shouldCreateUser: true } });
+  if (error) { showAlert("Could not send the code: " + error.message); return; }
+  showAlert(`Code sent to ${currentEmail} — check your inbox.`, true);
+  showStep("code");
+});
+
+stepCode.addEventListener("submit", async e => {
+  e.preventDefault();
+  const token = document.getElementById("login-code").value.trim();
+  showAlert("");
+  const { data, error } = await supabase.auth.verifyOtp({ email: currentEmail, token, type: "email" });
+  if (error) { showAlert("Incorrect or expired code — request a new one."); return; }
+  await establishSession(data.session);
+});
+
+document.getElementById("resend-code").addEventListener("click", async () => {
+  showAlert("");
+  const { error } = await supabase.auth.signInWithOtp({ email: currentEmail, options: { shouldCreateUser: true } });
+  if (error) { showAlert("Could not send the code: " + error.message); return; }
+  showAlert(`New code sent to ${currentEmail}.`, true);
+});
+
+document.getElementById("use-different-email").addEventListener("click", () => { showAlert(""); showStep("email"); });
+document.getElementById("switch-to-temp").addEventListener("click", e => { e.preventDefault(); showAlert(""); showStep("temp"); });
+document.getElementById("switch-to-email").addEventListener("click", e => { e.preventDefault(); showAlert(""); showStep("email"); });
+
+stepTemp.addEventListener("submit", async e => {
+  e.preventDefault();
+  const email = document.getElementById("login-email-temp").value.trim().toLowerCase();
+  const password = document.getElementById("login-temp-pw").value;
+  showAlert("");
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { showAlert("Sign-in failed: incorrect noon email or temporary password."); return; }
+  await establishSession(data.session);
+});
+
+// Restore an existing Supabase session (e.g. tab reopened) straight through.
+supabase.auth.getSession().then(({ data }) => { if (data.session) establishSession(data.session); });
+</script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>noon Ops Console</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<div class="mo-shell">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="mo-toast">{{ messages[0] }}</div>
+    {% endif %}
+  {% endwith %}
+
+  <aside class="mo-sidebar">
+    <div class="mo-brand">
+      <img src="{{ url_for('static', filename='images/noon-minutes-logo.png') }}" alt="noon minutes" style="height:34px;width:auto;display:block;">
+      <div><div class="mo-brand-sub">Ops console</div></div>
+    </div>
+
+    <nav class="mo-nav">
+      {% for item in nav %}
+        <div>
+          <a class="mo-navitem {{ 'mo-nav-item-active' if active_view == item.id else 'mo-nav-item' }}"
+             href="{{ {'bau': url_for('payments.hub'), 'kb': url_for('kb.summary'), 'ai': url_for('ai.picker'), 'admin': url_for('admin.audit_log')}[item.id] }}">
+            {{ item.label }}
+          </a>
+          {% if item.id == 'kb' and active_view == 'kb' %}
+            {% block kb_sidebar %}{% endblock %}
+          {% endif %}
+          {% if item.id == 'ai' and active_view == 'ai' %}
+            <div style="margin-left:6px;margin-bottom:6px;">
+              <a class="mo-subnav-item {{ 'mo-subnav-item-active' if ai_tab == 'chat' else '' }}" href="{{ url_for('ai.chat') }}">Chatbot</a>
+              <a class="mo-subnav-item {{ 'mo-subnav-item-active' if ai_tab == 'sopbot' else '' }}" href="{{ url_for('ai.sopbot') }}">SOP completeness bot</a>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </nav>
+
+    {% if active_view not in ('kb', 'ai') %}
+      <div class="mo-region-legend">
+        <div class="mo-region-legend-title">Regions</div>
+        {% for r in regions.values() %}
+          <div class="mo-region-row"><span class="mo-region-swatch" style="background:{{ r.color }};"></span>{{ r.name }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="mo-sidebar-footer">
+      <div class="mo-sidebar-footer-title">{{ 'Team lead' if user.role == 'admin' else 'Team member' }}</div>
+      <div class="mo-sidebar-footer-sub">{{ 'Reviewer · Publisher' if user.role == 'admin' else 'Editor · All sections' }}</div>
+    </div>
+  </aside>
+
+  {% block section_pane %}{% endblock %}
+
+  <div class="mo-main">
+    <header class="mo-header">
+      <div class="mo-header-title">{{ header_title }}</div>
+      <div class="mo-header-row">
+        <div>
+          <div class="mo-user-name">{{ user.name }}</div>
+          <div class="mo-user-role">{{ user.role }}{% if user.region %} · {{ regions[user.region].short }}{% endif %}</div>
+        </div>
+        <form method="post" action="{{ url_for('auth.logout') }}"><button class="mo-btn" type="submit">Switch user</button></form>
+      </div>
+    </header>
+    <div class="mo-header-accent"></div>
+
+    <main class="mo-content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+</body>
+</html>

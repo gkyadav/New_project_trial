@@ -1,0 +1,245 @@
+{% extends "layout.html" %}
+{% block kb_sidebar %}{% include "kb/_sidebar_tree.html" %}{% endblock %}
+
+{% block section_pane %}
+{% if open_card %}
+<aside class="mo-section-pane">
+  <div style="font-size:11px;font-weight:900;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Sections</div>
+  <div style="font-weight:900;font-size:14px;color:var(--mo-ink);margin-bottom:10px;line-height:1.3;">{{ open_card.title }}</div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+    <div style="flex:1;height:6px;background:rgba(15,23,42,0.08);border-radius:3px;overflow:hidden;">
+      <div style="width:{{ open_card.progress }}%;height:100%;background:{{ 'linear-gradient(90deg, var(--mo-success), #1FBE84)' if open_card.progress == 100 else 'linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2))' }};"></div>
+    </div>
+    <span style="font-size:11.5px;font-weight:800;color:var(--mo-muted);white-space:nowrap;">{{ open_card.doneSections }}/16</span>
+  </div>
+  <div style="display:grid;gap:2px;overflow-y:auto;flex:1;">
+    {% for s in steps %}
+      {% set is_active = loop.index0 == active_section %}
+      {% set is_done = s.status == 'done' %}
+      <a href="{{ url_for('kb.open_card', region=open_card.country, card_id=open_card.id, section=loop.index0) }}"
+         style="display:flex;align-items:center;gap:8px;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if is_active else 'transparent' }};background:{{ 'rgba(232,52,42,0.06)' if is_active else 'none' }};border-radius:6px;padding:7px 8px;text-align:left;text-decoration:none;">
+        {% if is_done %}
+          <span style="width:16px;height:16px;border-radius:50%;background:#16a34a;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:10px;">✓</span>
+        {% else %}
+          <span style="width:16px;height:16px;border-radius:50%;border:1.5px solid {{ 'var(--mo-accent)' if is_active else '#94a3b8' }};flex-shrink:0;display:inline-block;"></span>
+        {% endif %}
+        <span style="font-size:12.5px;font-weight:700;color:{{ 'var(--mo-accent-2)' if is_active else 'var(--mo-ink)' }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ s.name }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</aside>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;gap:10px;align-items:center;margin:14px 0;flex-wrap:wrap;">
+  {% if department and not open_card %}
+    <details>
+      <summary class="mo-btn mo-btn-sm mo-btn-primary" style="display:inline-flex;cursor:pointer;">+ Add a card — {{ country_label }} / {{ dept_label }}</summary>
+      <div class="mo-card" style="margin-top:10px;max-width:600px;">
+        <div style="font-weight:900;font-size:15px;margin-bottom:4px;color:var(--mo-ink);">New draft card — {{ country_label }} / {{ dept_label }}</div>
+        <div style="font-size:12px;color:var(--mo-muted);margin-bottom:10px;">You ({{ user.name }}) will own this card. Build it as steps — every step needs a name and a description. It stays a draft until Gaurav publishes it.</div>
+        <form method="post" action="{{ url_for('kb.create_card', region=country, dept=department) }}">
+          <input class="mo-input" name="title" placeholder="Card title" style="margin-bottom:10px;">
+          <div style="display:grid;gap:10px;">
+            {% for i in range(5) %}
+              <div class="kb-step">
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                  <span class="kb-step-num">Step {{ i + 1 }}</span>
+                  <input class="mo-input" name="step_name" placeholder="Step name (e.g. Collect attendance inputs)">
+                </div>
+                <textarea class="mo-textarea" name="step_detail" rows="3" placeholder="Step description — one point per line"></textarea>
+              </div>
+            {% endfor %}
+          </div>
+          <button class="mo-btn mo-btn-sm mo-btn-primary" style="margin-top:10px;" type="submit">Save as draft</button>
+        </form>
+      </div>
+    </details>
+  {% elif not department %}
+    <span style="font-size:12.5px;color:var(--mo-muted);font-weight:700;">Pick Country Policies, Fulfillment or Logistics on the left to add a card.</span>
+  {% endif %}
+</div>
+
+{% if not open_card %}
+  {% if country_cards|length == 0 %}
+    <div style="text-align:center;padding:56px 0;color:var(--mo-muted);">
+      <div style="font-size:13.5px;">No cards here yet{{ ' — add the first one.' if department else '.' }}</div>
+    </div>
+  {% else %}
+    <div class="kb-grid">
+      {% for c in country_cards %}
+        {% set pending_count = revisions|selectattr("cardId", "equalto", c.id)|selectattr("status", "equalto", "pending")|list|length %}
+        {% set owner = users|selectattr("id", "equalto", c.owner)|list|first %}
+        <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('kb.open_card', region=country, card_id=c.id) }}">
+          <span class="kb-pcard-badges">
+            <span class="mo-pill mo-pill-{{ 'success' if c.status == 'published' else 'neutral' }}">{{ 'Published' if c.status == 'published' else 'Draft' }}</span>
+            {% if pending_count > 0 %}<span class="mo-pill mo-pill-warn">{{ pending_count }} pending</span>{% endif %}
+          </span>
+          <span class="kb-medallion">KB</span>
+          <span class="kb-pcard-title kb-pcard-title-big">{{ c.title }}</span>
+          <span class="kb-pcard-foot">
+            <span class="kb-avatar">{{ ((owner.name if owner else c.author) or "?")[:2]|upper }}</span>
+            <span class="kb-owner-name">{{ owner.name if owner else c.author }}</span>
+          </span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% else %}
+  {% set card = open_card %}
+  {% set owner = users|selectattr("id", "equalto", card.owner)|list|first %}
+  {% set assignee = users|selectattr("id", "equalto", card.assignedTo)|list|first if card.assignedTo else None %}
+  {% set pending = open_card_revisions|selectattr("status", "equalto", "pending")|list %}
+  {% set history = open_card_revisions|rejectattr("status", "equalto", "pending")|list %}
+  <div style="max-width:820px;">
+    <div class="mo-card kb-card-anim">
+      <div style="height:5px;margin:-16px -18px 16px;border-radius:18px 18px 0 0;background:linear-gradient(90deg, #e8342a, #c81e1e, #e8342a);"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <a class="mo-btn mo-btn-sm" href="{{ url_for('kb.region_view', region=country) }}">← {{ country_label }}</a>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:13px;font-weight:800;color:var(--mo-ink);">{{ card.progress }}% · {{ card.doneSections }}/16 sections</span>
+          <span class="mo-pill mo-pill-{{ 'success' if card.status == 'published' else 'neutral' }}">{{ 'Published' if card.status == 'published' else 'Draft' }}</span>
+          {% if user.role == 'admin' %}
+            <form method="post" action="{{ url_for('kb.delete_card', card_id=card.id) }}" onsubmit="return confirm('Delete this card?');">
+              <button class="mo-btn mo-btn-sm mo-btn-danger" title="Delete card" type="submit">✕</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        {% if card.country in regions %}<span class="mo-region-swatch" style="background:{{ regions[card.country].color }};display:inline-block;"></span>{% endif %}
+        <form method="post" action="{{ url_for('kb.save_title', card_id=card.id) }}" style="display:flex;gap:6px;">
+          <input class="mo-input" style="max-width:380px;font-weight:900;font-size:14.5px;" name="title" value="{{ card.title }}">
+          <button class="mo-btn mo-btn-sm" type="submit">Save title</button>
+        </form>
+        {% if user.role == 'admin' %}
+          <form method="post" action="{{ url_for('kb.assign_card', card_id=card.id) }}">
+            <select class="mo-input" name="assignee" style="max-width:160px;font-size:12px;padding:4px 6px;" onchange="this.form.submit()">
+              <option value="">Unassigned</option>
+              {% for u in users if u.active %}
+                <option value="{{ u.id }}" {{ 'selected' if card.assignedTo == u.id else '' }}>{{ u.name }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        {% elif assignee %}
+          <span class="mo-pill mo-pill-neutral">Assigned: {{ assignee.name }}</span>
+        {% endif %}
+        {% if card.status == 'draft' and user.role == 'admin' %}
+          <form method="post" action="{{ url_for('kb.publish_card', card_id=card.id) }}"><button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">Publish</button></form>
+        {% elif card.status == 'published' and user.role == 'admin' %}
+          <form method="post" action="{{ url_for('kb.unpublish_card', card_id=card.id) }}"><button class="mo-btn mo-btn-sm" type="submit">Unpublish</button></form>
+        {% endif %}
+        {% if pending|length > 0 %}<span class="mo-pill mo-pill-warn">{{ pending|length }} pending change{{ 's' if pending|length > 1 else '' }}</span>{% endif %}
+      </div>
+
+      {% if card.updateRequest %}
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;background:rgba(232,52,42,0.08);border:1px solid rgba(232,52,42,0.25);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:12.5px;">
+          <span><strong>Update requested</strong> by {{ card.updateRequestedBy }} · {{ card.updateRequestedAt }}: {{ card.updateRequest }}</span>
+          {% if user.role == 'admin' %}<form method="post" action="{{ url_for('kb.clear_update', card_id=card.id) }}"><button class="mo-btn mo-btn-sm" type="submit">Clear</button></form>{% endif %}
+        </div>
+      {% endif %}
+
+      {% if user.role == 'admin' and not card.updateRequest %}
+        <details style="margin:8px 0 12px;">
+          <summary class="mo-btn mo-btn-sm" style="display:inline-flex;cursor:pointer;">Request update</summary>
+          <form method="post" action="{{ url_for('kb.request_update', card_id=card.id) }}" style="margin-top:8px;">
+            <textarea class="mo-textarea" name="note" rows="2" placeholder="What should {{ assignee.name if assignee else 'the assignee' }} update on this card?" style="margin-bottom:8px;"></textarea>
+            <button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">Send update request</button>
+          </form>
+        </details>
+      {% endif %}
+
+      <div style="margin:4px 0 14px;">
+        <div style="width:100%;height:7px;background:rgba(0,0,0,0.05);border-radius:4px;overflow:hidden;">
+          <div style="width:{{ card.progress }}%;height:100%;border-radius:4px;background:{{ 'linear-gradient(90deg, var(--mo-success), #1FBE84)' if card.progress == 100 else 'linear-gradient(90deg, #e8342a, #c81e1e)' }};"></div>
+        </div>
+      </div>
+
+      {% set s = steps[active_section] if active_section < steps|length else {} %}
+      {% set is_done = s.status == 'done' %}
+      <div class="kb-section-anim" style="border-radius:12px;border:1px solid #e8342a59;overflow:hidden;background:#e8342a0a;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-left:4px solid {{ 'var(--mo-success)' if is_done else '#e8342a' }};flex-wrap:wrap;gap:8px;">
+          <span style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <span style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:{{ 'linear-gradient(135deg, var(--mo-success), #1FBE84)' if is_done else 'linear-gradient(135deg, #e8342a, #c81e1e)' }};color:#fff;font-size:11px;font-weight:800;">{{ '✓' if is_done else active_section + 1 }}</span>
+            <span style="font-size:11px;font-weight:800;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.08em;">Section {{ active_section + 1 }} of {{ steps|length }}</span>
+          </span>
+          <form method="post" action="{{ url_for('kb.toggle_done', card_id=card.id, idx=active_section) }}">
+            <button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">{{ 'Mark pending' if is_done else 'Mark done' }}</button>
+          </form>
+        </div>
+        <div style="padding:12px 14px 14px;">
+          <form method="post" action="{{ url_for('kb.save_section', card_id=card.id, idx=active_section) }}">
+            <input class="mo-input" style="margin-bottom:8px;font-weight:800;" name="name" value="{{ s.name or '' }}" placeholder="Section name">
+            <textarea class="mo-textarea" name="detail" style="min-height:260px;" placeholder="Write this section — one point per line">{{ s.detail or '' }}</textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+              <button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">Save section</button>
+              <label style="font-size:12px;color:var(--mo-muted);display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" name="mark_done" value="1" {{ 'checked' if is_done else '' }}> mark done on save
+              </label>
+            </div>
+          </form>
+          {% if active_section < steps|length - 1 %}
+            <a class="mo-btn mo-btn-sm" style="margin-top:8px;display:inline-block;" href="{{ url_for('kb.open_card', region=card.country, card_id=card.id, section=active_section + 1) }}">Next section →</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="font-size:11.5px;color:var(--mo-muted);margin:10px 0;">
+        Owner: <strong style="color:var(--mo-ink);">{{ owner.name ~ ' · ' ~ owner.title if owner else card.author }}</strong> · created by {{ card.author }} · updated {{ card.updatedAt }}
+      </div>
+
+      {% if pending|length > 0 %}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--mo-border);display:grid;gap:10px;">
+          {% for r in pending %}
+            <div style="background:var(--mo-surface-alt);border-radius:10px;padding:10px 12px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                <span style="font-size:12.5px;"><strong>{{ r.authorName }}</strong> proposed an edit · {{ r.createdAt }}</span>
+                {% if user.role == 'admin' %}
+                  <span style="display:flex;gap:6px;">
+                    <form method="post" action="{{ url_for('kb.merge_revision', rev_id=r.id) }}"><button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">Merge</button></form>
+                    <form method="post" action="{{ url_for('kb.reject_revision', rev_id=r.id) }}"><button class="mo-btn mo-btn-sm mo-btn-danger" type="submit">Reject</button></form>
+                  </span>
+                {% else %}
+                  <span class="mo-pill mo-pill-warn">Awaiting Gaurav</span>
+                {% endif %}
+              </div>
+              {% if r.note %}<div style="font-size:12px;color:var(--mo-muted);margin-bottom:4px;">{{ r.note }}</div>{% endif %}
+              {% if r.steps %}
+                <div style="display:grid;gap:6px;">
+                  {% for s2 in r.steps %}
+                    <div class="kb-step" style="background:rgba(255,255,255,0.7);">
+                      <div class="kb-step-head"><span class="kb-step-num">Step {{ loop.index }}</span><strong style="font-size:12.5px;">{{ s2.name }}</strong></div>
+                      <div style="font-size:12px;color:var(--mo-ink);white-space:pre-line;">{{ s2.detail }}</div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div style="font-size:12.5px;color:var(--mo-ink);white-space:pre-line;">{{ r.body }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if history|length > 0 %}
+        <details style="margin-top:12px;padding-top:12px;border-top:1px solid var(--mo-border);">
+          <summary class="mo-btn mo-btn-sm" style="display:inline-flex;cursor:pointer;">History ({{ history|length }})</summary>
+          <div style="display:grid;gap:6px;margin-top:10px;">
+            {% for r in history %}
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;">
+                <span><strong>{{ r.authorName }}</strong> · {{ r.createdAt }}</span>
+                <span style="display:flex;align-items:center;gap:8px;">
+                  <span class="mo-pill mo-pill-{{ 'success' if r.status == 'merged' else 'danger' }}">{{ 'Merged' if r.status == 'merged' else 'Rejected' }}</span>
+                  <span style="color:var(--mo-muted);">by {{ r.decidedBy }} · {{ r.decidedAt }}</span>
+                </span>
+              </div>
+            {% endfor %}
+          </div>
+        </details>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

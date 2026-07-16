@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="max-width:900px;margin:14px auto 0;display:grid;gap:14px;">
+  <div class="mo-card" style="display:flex;align-items:center;gap:12px;">
+    <span class="kb-medallion" style="width:42px;height:42px;">❓</span>
+    <div style="flex:1;">
+      <div style="font-weight:900;font-size:15px;color:var(--mo-ink);">SOP Completeness Bot</div>
+      <div style="font-size:12px;color:var(--mo-muted);">
+        I read every knowledge card and assume it's incomplete until proven otherwise. I ask the questions; you answer
+        for points; accepted answers become card revisions for Gaurav to merge.
+      </div>
+    </div>
+    <span class="mo-pill mo-pill-success" style="flex-shrink:0;">🏆 {{ my_pts }} pts — you</span>
+    {% if user.role == 'admin' %}
+      <form method="post" action="{{ url_for('ai.scan') }}"><button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">Scan SOPs for gaps</button></form>
+    {% endif %}
+  </div>
+
+  <div class="mo-card">
+    <div style="font-weight:900;font-size:13.5px;margin-bottom:10px;">🏆 Knowledge leaderboard</div>
+    <div style="display:grid;gap:6px;">
+      {% for b in board %}
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+          <span style="width:22px;font-weight:900;color:{{ 'var(--mo-gold)' if loop.index0 == 0 and b.pts > 0 else 'var(--mo-muted)' }};">#{{ loop.index }}</span>
+          <span style="flex:1;font-weight:700;">{{ b.user.name }}{% if b.user.id == user.id %} <span style="color:var(--mo-muted);font-weight:600;">(you)</span>{% endif %}</span>
+          <div class="mo-progress-track" style="width:160px;">
+            <div class="mo-progress-fill" style="width:{{ (b.pts / board[0].pts * 100)|round|int if board and board[0].pts else 0 }}%;background:linear-gradient(90deg, var(--mo-accent), var(--mo-accent-2));"></div>
+          </div>
+          <span style="font-weight:900;min-width:52px;text-align:right;">{{ b.pts }} pts</span>
+        </div>
+      {% endfor %}
+    </div>
+    <div style="font-size:11.5px;color:var(--mo-muted);margin-top:10px;">
+      +{{ points.newCard }} new card · +{{ points.mergedRevision }} merged edit · +{{ points.botAnswer }} bot answer · +{{ points.submitToCard }} answer submitted to a card
+    </div>
+  </div>
+
+  <div>
+    <div style="font-size:12.5px;font-weight:900;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.1em;margin:4px 0 10px;">
+      Knowledge cards with open questions ({{ groups|length }})
+    </div>
+    {% if groups|length == 0 %}
+      <div style="padding:28px 0;text-align:center;color:var(--mo-muted);font-size:13px;">
+        {{ 'No open questions. Run a scan — if nothing comes back, the SOPs look complete.' if user.role == 'admin' else 'No open questions right now. Check back after the next scan.' }}
+      </div>
+    {% endif %}
+    <div class="kb-grid">
+      {% for g in groups %}
+        <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('ai.sopbot_card', card_id=g.cardId) }}">
+          <span class="kb-pcard-badges">
+            {% if g.openCount > 0 %}<span class="mo-pill mo-pill-warn">{{ g.openCount }} pending</span>{% else %}<span class="mo-pill mo-pill-success">Ready to submit</span>{% endif %}
+          </span>
+          <span class="kb-medallion">Q&A</span>
+          <span class="kb-pcard-title kb-pcard-title-big">{{ g.cardTitle }}</span>
+          <span class="kb-pcard-foot" style="justify-content:center;"><span style="font-size:12px;color:var(--mo-muted);">{{ country_label.get(g.country, g.country) }} / {{ g.section }}</span></span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if submitted|length > 0 %}
+    <div style="font-size:12px;color:var(--mo-muted);">
+      {{ submitted|length }} answer{{ 's' if submitted|length > 1 else '' }} submitted as card revisions — they land in the cards once Gaurav merges them.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--mo-border);margin-bottom:4px;">
+  <div style="display:flex;gap:4px;">
+    <a class="mo-subtab mo-subtab-active" href="{{ url_for('admin.access_control') }}">Access control</a>
+    <a class="mo-subtab" href="{{ url_for('admin.audit_log') }}">Audit log</a>
+  </div>
+</div>
+
+<p style="font-size:13.5px;color:var(--mo-muted);margin:14px 0;">
+  Roles are fixed rules, not editable at runtime — this keeps access predictable and auditable. Only official noon.com
+  emails can sign in; new team members verify with a one-time code sent to their inbox, no password to manage.
+</p>
+
+<details style="margin-bottom:14px;">
+  <summary class="mo-btn mo-btn-sm mo-btn-primary" style="display:inline-flex;cursor:pointer;">+ Add team member</summary>
+  <div class="mo-card" style="margin-top:10px;display:grid;gap:8px;max-width:480px;">
+    <form method="post" action="{{ url_for('admin.add_user') }}" style="display:grid;gap:8px;">
+      <input class="mo-input" name="id" placeholder="Official noon email (e.g. name@noon.com)">
+      <input class="mo-input" name="name" placeholder="Full name">
+      <input class="mo-input" name="title" placeholder="Title (e.g. Performance Admin)">
+      <select class="mo-select" name="role">
+        <option value="agent">Agent</option>
+        <option value="reviewer">Reviewer</option>
+        <option value="admin">Admin</option>
+      </select>
+      <div style="display:flex;gap:12px;font-size:12.5px;font-weight:700;">
+        {% for r in regions.values() %}
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" name="regions" value="{{ r.id }}"> {{ r.short }}
+          </label>
+        {% endfor %}
+      </div>
+      <button class="mo-btn mo-btn-sm mo-btn-primary" type="submit">Save team member</button>
+    </form>
+  </div>
+</details>
+
+<div class="mo-table-wrap" style="margin-bottom:24px;">
+  <table class="mo-table">
+    <thead><tr><th>Name</th><th>Role</th><th>Region</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td style="font-weight:800;color:var(--mo-ink);">{{ u.name }}<div class="mo-mono" style="font-size:11px;color:var(--mo-muted);font-weight:600;">{{ u.id }}</div></td>
+          <td style="text-transform:capitalize;">{{ u.role }}</td>
+          <td>
+            {% if u.region and u.region in regions %}
+              <span style="display:inline-flex;align-items:center;font-size:12.5px;color:var(--mo-ink);">
+                <span class="mo-region-swatch" style="background:{{ regions[u.region].color }};"></span>{{ regions[u.region].short }}
+              </span>
+            {% else %}
+              <span style="color:var(--mo-muted);font-size:12.5px;">All regions</span>
+            {% endif %}
+          </td>
+          <td><span class="mo-pill {{ 'mo-pill-success' if u.active else 'mo-pill-danger' }}">{{ 'Active' if u.active else 'Inactive' }}</span></td>
+          <td>
+            <form method="post" action="{{ url_for('admin.toggle_user', user_id=u.id) }}">
+              <button class="mo-btn mo-btn-sm" type="submit">{{ 'Deactivate' if u.active else 'Activate' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div style="font-size:12.5px;font-weight:900;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">Permission matrix (reference — not editable)</div>
+<div class="mo-table-wrap">
+  <table class="mo-table">
+    <thead><tr><th>Module</th><th>Agent</th><th>Reviewer</th><th>Admin</th></tr></thead>
+    <tbody>
+      {% for row in permission_matrix %}
+        <tr>
+          <td style="font-weight:800;color:var(--mo-ink);">{{ row[0] }}</td>
+          <td style="font-size:12.5px;color:var(--mo-muted);">{{ row[1] }}</td>
+          <td style="font-size:12.5px;color:var(--mo-muted);">{{ row[2] }}</td>
+          <td style="font-size:12.5px;color:var(--mo-muted);">{{ row[3] }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

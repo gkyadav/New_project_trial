@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--mo-border);margin-bottom:4px;">
+  <div style="display:flex;gap:4px;">
+    {% if show_access_tab %}<a class="mo-subtab" href="{{ url_for('admin.access_control') }}">Access control</a>{% endif %}
+    <a class="mo-subtab mo-subtab-active" href="{{ url_for('admin.audit_log') }}">Audit log</a>
+  </div>
+</div>
+
+<form method="get" style="display:flex;gap:8px;margin:14px 0;flex-wrap:wrap;">
+  <select class="mo-select" name="actor" onchange="this.form.submit()">
+    {% for a in actors %}<option value="{{ a }}" {{ 'selected' if actor_filter == a else '' }}>{{ 'All actors' if a == 'all' else a }}</option>{% endfor %}
+  </select>
+  <select class="mo-select" name="action" onchange="this.form.submit()">
+    {% for a in actions %}<option value="{{ a }}" {{ 'selected' if action_filter == a else '' }}>{{ 'All actions' if a == 'all' else a }}</option>{% endfor %}
+  </select>
+  <select class="mo-select" name="region" onchange="this.form.submit()">
+    <option value="all" {{ 'selected' if region_filter == 'all' else '' }}>All regions</option>
+    {% for r in regions.values() %}<option value="{{ r.id }}" {{ 'selected' if region_filter == r.id else '' }}>{{ r.short }}</option>{% endfor %}
+  </select>
+</form>
+
+<div class="mo-table-wrap">
+  <table class="mo-table">
+    <thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Detail</th><th>Region</th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+        <tr>
+          <td class="mo-mono" style="font-size:12px;">{{ e.at }}</td>
+          <td style="font-weight:800;color:var(--mo-ink);">{{ e.actor }}</td>
+          <td><span class="mo-pill mo-pill-neutral">{{ e.action }}</span></td>
+          <td style="font-size:12.5px;color:var(--mo-muted);">{{ e.detail }}</td>
+          <td class="mo-mono" style="font-size:12px;">{{ e.region }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" style="padding:28px 0;text-align:center;color:var(--mo-muted);font-size:13px;">No audit entries match these filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p style="font-size:11.5px;color:var(--mo-muted);margin-top:12px;">Append-only in this prototype — no delete or edit action exists for log entries, by design.</p>
+{% endblock %}

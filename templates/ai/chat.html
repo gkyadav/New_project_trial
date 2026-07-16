@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="max-width:780px;margin:14px auto 0;">
+  <div class="mo-card" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+    <span class="kb-medallion" style="width:42px;height:42px;">🤖</span>
+    <div>
+      <div style="font-weight:900;font-size:15px;color:var(--mo-ink);">Ops KB Bot <span class="mo-pill mo-pill-neutral" style="margin-left:6px;">training</span></div>
+      <div style="font-size:12px;color:var(--mo-muted);">
+        Connected to the knowledge base across UAE, KSA and Egypt. Draft answers are flagged until Gaurav publishes them.
+      </div>
+    </div>
+  </div>
+
+  <div class="mo-card bot-thread">
+    {% for m in messages %}
+      <div class="bot-row {{ 'bot-row-user' if m.role == 'user' else '' }}">
+        {% if m.role == 'bot' %}<span class="bot-avatar">🤖</span>{% endif %}
+        <div class="{{ 'bot-bubble-user' if m.role == 'user' else 'bot-bubble' }}">
+          <div style="white-space:pre-line;">{{ m.text }}</div>
+          {% if m.sources %}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+              {% for s in m.sources %}
+                <span class="bot-source">{{ s.title }} · {{ country_label.get(s.country, s.country) }}/{{ s.section }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+    <form method="post" action="{{ url_for('ai.chat_ask') }}" style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--mo-border);">
+      <input class="mo-input" name="question" placeholder="Ask the bot — e.g. how do I verify a bank transfer reference?">
+      <button type="submit" class="mo-btn mo-btn-primary" style="flex-shrink:0;">Ask</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

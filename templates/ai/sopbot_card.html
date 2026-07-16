@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="max-width:900px;margin:14px auto 0;display:grid;gap:14px;">
+  <a class="mo-btn mo-btn-sm" style="justify-self:start;" href="{{ url_for('ai.sopbot') }}">← All knowledge cards</a>
+
+  {% if not group %}
+    <div style="padding:28px 0;text-align:center;color:var(--mo-muted);font-size:13px;">All caught up on this card — nothing left to answer.</div>
+  {% else %}
+    <div class="mo-card kb-card-anim">
+      <div style="height:5px;margin:-16px -18px 16px;border-radius:18px 18px 0 0;background:linear-gradient(90deg, #e8342a, #c81e1e, #e8342a);"></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--mo-border);">
+        <span class="kb-medallion" style="width:42px;height:42px;flex-shrink:0;">📘</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:900;font-size:15px;color:var(--mo-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ group.cardTitle }}</div>
+          <div style="font-size:12px;color:var(--mo-muted);">{{ country_label.get(group.country, group.country) }} / {{ group.section }}</div>
+        </div>
+        {% if group.openCount > 0 %}<span class="mo-pill mo-pill-neutral" style="flex-shrink:0;">{{ group.openCount }} pending</span>{% endif %}
+      </div>
+
+      <div style="display:grid;gap:14px;">
+        {% for q in group.items %}
+          <div style="{{ 'padding-top:14px;border-top:1px solid var(--mo-border);' if not loop.first else '' }}">
+            {% if q.status == 'open' %}
+              <div style="display:flex;gap:8px;align-items:flex-start;">
+                <span class="bot-avatar" style="flex-shrink:0;">❓</span>
+                <div class="bot-bubble" style="max-width:100%;flex:1;">{{ q.question }}</div>
+                {% if user.role == 'admin' %}
+                  <form method="post" action="{{ url_for('ai.dismiss_question', qid=q.id) }}"><button class="mo-btn mo-btn-sm" style="flex-shrink:0;" title="Dismiss" type="submit">✕</button></form>
+                {% endif %}
+              </div>
+              <form method="post" action="{{ url_for('ai.answer_question', qid=q.id) }}" style="display:flex;gap:8px;margin-top:10px;">
+                <textarea class="mo-textarea" name="answer" rows="2" placeholder="Answer with specifics — earns +{{ points.botAnswer }} pts when the bot accepts it"></textarea>
+                <button class="mo-btn mo-btn-sm mo-btn-primary" style="align-self:flex-end;flex-shrink:0;" type="submit">Answer</button>
+              </form>
+            {% else %}
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                <span style="font-size:12.5px;color:var(--mo-muted);">{{ q.question }}</span>
+                <span style="font-size:12px;color:var(--mo-muted);white-space:nowrap;">by <strong>{{ q.answeredByName }}</strong> · {{ q.answeredAt }}</span>
+              </div>
+              <div style="font-size:13px;color:var(--mo-ink);white-space:pre-line;background:var(--mo-surface-alt);border-radius:10px;padding:8px 10px;">{{ q.answer }}</div>
+              {% if user.role == 'admin' or q.answeredBy == user.id %}
+                <form method="post" action="{{ url_for('ai.submit_to_card', qid=q.id) }}">
+                  <button class="mo-btn mo-btn-sm mo-btn-primary" style="margin-top:10px;" type="submit">Submit to knowledge card (+{{ points.submitToCard }} pts)</button>
+                </form>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

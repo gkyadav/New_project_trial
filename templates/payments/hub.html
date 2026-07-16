@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block content %}
+<div style="display:flex;flex-direction:column;min-height:calc(100vh - 170px);">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--mo-border);margin-bottom:4px;">
+    <div style="display:flex;gap:4px;">
+      <a class="mo-subtab {{ 'mo-subtab-active' if group == 'fulfillment' else '' }}" href="{{ url_for('payments.hub', group='fulfillment') }}">Fulfillment</a>
+      <a class="mo-subtab {{ 'mo-subtab-active' if group == 'logistics' else '' }}" href="{{ url_for('payments.hub', group='logistics') }}">Logistics</a>
+    </div>
+  </div>
+  <p style="font-size:13.5px;color:var(--mo-muted);margin:14px 0 0;">
+    {{ 'Fulfillment' if group == 'fulfillment' else 'Logistics' }} payment operations — pick a workstream to continue.
+  </p>
+  <div class="kb-grid">
+    {% for card in cards %}
+      <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('payments.open_card', card_id=card.id) }}">
+        <span class="kb-pip kb-pip-top">PAY</span>
+        <span class="kb-pip kb-pip-bottom">PAY</span>
+        <span class="kb-medallion" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;">{{ card.title[:2]|upper }}</span>
+        <span class="kb-pcard-title kb-pcard-title-big">{{ card.title }}</span>
+        <span class="kb-pcard-foot" style="justify-content:center;">
+          <span style="font-size:12px;font-weight:800;color:var(--mo-accent);">Open →</span>
+        </span>
+      </a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
