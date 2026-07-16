@@ -1231,6 +1231,13 @@ const KB_TINT_MAP = {
 };
 const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#2563eb", "#7c3aed"];
 
+const DEPT_TINT = {
+  country_policies: ["#2563eb", "#7c3aed"],
+  fulfillment: ["#0891b2", "#18b56f"],
+  logistics: ["#f97316", "#f59e0b"],
+};
+const deptTint = department => DEPT_TINT[department] || DEPT_TINT.country_policies;
+
 function KbPlayingCard({ card, users, currentUser, pendingCount, onOpen }) {
   const [c1, c2] = kbTint(card);
   const owner = users.find(u => u.id === card.owner);
@@ -1591,6 +1598,10 @@ function KbSummaryDashboard({ cards, onSelectRegion }) {
   );
 }
 
+/* Shared accent for the active-hierarchy trail: region, department and the
+   open card all get the same tint so the whole path reads as one thread. */
+const KB_ACTIVE_STYLE = { background: "linear-gradient(135deg, rgba(56,189,248,0.35), rgba(124,58,237,0.4))", boxShadow: "inset 0 0 0 1px rgba(139,92,246,0.5)" };
+
 function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, openCardId, activeSection, onOpenCard, expanded, setExpanded }) {
   function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
 
@@ -1600,9 +1611,10 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
           const regionKey = `r:${region.id}`;
           const regionCards = cards.filter(c => c.country === region.id);
           const regionOpen = !!expanded[regionKey];
+          const regionActive = region.id === kbTab;
           return (
             <div key={region.id} style={{ marginBottom: 4 }}>
-              <button onClick={() => { toggle(regionKey); onSelectRegion(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: region.id === kbTab ? "rgba(255,255,255,0.08)" : "none", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff" }}>
+              <button onClick={() => { toggle(regionKey); onSelectRegion(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", borderLeft: `3px solid ${regionActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff", transition: "background 0.2s ease", ...(regionActive ? KB_ACTIVE_STYLE : { background: "none" }) }}>
                 <span style={{ fontSize: 13.5, fontWeight: 800 }}>{region.label}</span>
                 <span style={{ fontSize: 11.5, color: "#9fb6dd", fontWeight: 700 }}>{regionCards.length}</span>
               </button>
@@ -1611,9 +1623,10 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                 const deptKey = `d:${region.id}:${dept.id}`;
                 const deptCards = regionCards.filter(c => c.department === dept.id);
                 const deptOpen = !!expanded[deptKey];
+                const deptActive = regionActive && dept.id === kbDept;
                 return (
                   <div key={dept.id} style={{ marginLeft: 10 }}>
-                    <button onClick={() => { toggle(deptKey); onSelectDept(region.id, dept.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: region.id === kbTab && dept.id === kbDept ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)", border: "none", cursor: "pointer", padding: "7px 8px", borderRadius: 8, color: "#d5e2f7", marginBottom: 3 }}>
+                    <button onClick={() => { toggle(deptKey); onSelectDept(region.id, dept.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", borderLeft: `3px solid ${deptActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "7px 8px", borderRadius: 8, color: "#d5e2f7", marginBottom: 3, transition: "background 0.2s ease", ...(deptActive ? KB_ACTIVE_STYLE : { background: "rgba(255,255,255,0.05)" }) }}>
                       <span style={{ fontSize: 12.5, fontWeight: 800 }}>{dept.label}</span>
                       <span style={{ fontSize: 11, color: "#9fb6dd", fontWeight: 700 }}>{deptCards.length}</span>
                     </button>
@@ -1622,9 +1635,10 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                       const cardKey = `c:${card.id}`;
                       const cardOpen = !!expanded[cardKey];
                       const steps = cardSteps(card);
+                      const cardActive = openCardId === card.id;
                       return (
                         <div key={card.id} style={{ marginLeft: 10, marginBottom: 4 }}>
-                          <button onClick={() => toggle(cardKey)} style={{ display: "block", width: "100%", background: "rgba(255,255,255,0.04)", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left" }}>
+                          <button onClick={() => toggle(cardKey)} style={{ display: "block", width: "100%", border: "none", borderLeft: `3px solid ${cardActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left", transition: "background 0.2s ease", ...(cardActive ? KB_ACTIVE_STYLE : { background: "rgba(255,255,255,0.04)" }) }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                               <span style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{card.title}</span>
                               <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#4ade80" : "#fde047", whiteSpace: "nowrap" }}>{card.progress}%</span>
@@ -1751,6 +1765,7 @@ function CountryKB({ country, department, cards, revisions, users, currentUser, 
 
 function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onUnpublish, onDelete, onSaveSteps, onSaveTitle, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, onBack, activeSection, setActiveSection }) {
   const steps = cardSteps(card);
+  const [dc1, dc2] = deptTint(card.department);
   const [draftTitle, setDraftTitle] = useState(card.title);
   const [draftName, setDraftName] = useState(steps[activeSection]?.name || "");
   const [draftDetail, setDraftDetail] = useState(steps[activeSection]?.detail || "");
@@ -1782,7 +1797,8 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
   }
 
   return (
-    <div className="mo-card">
+    <div className="mo-card kb-card-anim">
+      <div style={{ height: 5, margin: "-16px -18px 16px", borderRadius: "18px 18px 0 0", background: `linear-gradient(90deg, ${dc1}, ${dc2}, ${dc1})`, backgroundSize: "200% 100%", animation: "kbAccentFlow 6s ease infinite" }} />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <button className="mo-btn mo-btn-sm" onClick={onBack}>← {COUNTRY_LABEL[card.country]}</button>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1846,8 +1862,8 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
       )}
 
       <div style={{ margin: "4px 0 14px" }}>
-        <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.05)", borderRadius: 3, overflow: "hidden" }}>
-          <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "var(--mo-success)" : "#f59e0b", transition: "width 0.3s" }} />
+        <div style={{ width: "100%", height: 7, background: "rgba(0,0,0,0.05)", borderRadius: 4, overflow: "hidden" }}>
+          <div style={{ width: `${card.progress}%`, height: "100%", borderRadius: 4, background: card.progress === 100 ? "linear-gradient(90deg, var(--mo-success), #1FBE84)" : `linear-gradient(90deg, ${dc1}, ${dc2})`, transition: "width 0.7s cubic-bezier(0.16,1,0.3,1)" }} />
         </div>
       </div>
 
@@ -1855,11 +1871,12 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
         {steps.map((s, i) => {
           const isActive = i === activeSection;
           const isDone = s.status === "done";
+          const badgeBg = isDone ? "linear-gradient(135deg, var(--mo-success), #1FBE84)" : isActive ? `linear-gradient(135deg, ${dc1}, ${dc2})` : "rgba(0,0,0,0.06)";
           return (
-            <div key={i} style={{ borderRadius: 12, border: `1px solid ${isActive ? "rgba(37,99,235,0.35)" : "var(--mo-border)"}`, overflow: "hidden", background: isActive ? "rgba(37,99,235,0.04)" : "var(--mo-surface-strong)" }}>
-              <button onClick={() => setActiveSection(i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 14px", borderLeft: `4px solid ${isDone ? "var(--mo-success)" : isActive ? "#2563eb" : "var(--mo-border)"}`, textAlign: "left" }}>
+            <div key={i} className="kb-section-anim" style={{ animationDelay: `${Math.min(i, 10) * 35}ms`, borderRadius: 12, border: `1px solid ${isActive ? `${dc1}59` : "var(--mo-border)"}`, overflow: "hidden", background: isActive ? `${dc1}0a` : "var(--mo-surface-strong)", transition: "border-color 0.25s ease, background 0.25s ease" }}>
+              <button onClick={() => setActiveSection(i)} className="kb-section-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "10px 14px", borderLeft: `4px solid ${isDone ? "var(--mo-success)" : isActive ? dc1 : "var(--mo-border)"}`, textAlign: "left", transition: "border-color 0.25s ease" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isDone ? "var(--mo-success)" : isActive ? "#2563eb" : "rgba(0,0,0,0.06)", color: isDone || isActive ? "#fff" : "var(--mo-muted)", fontSize: 11, fontWeight: 800 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: badgeBg, color: isDone || isActive ? "#fff" : "var(--mo-muted)", fontSize: 11, fontWeight: 800, transition: "background 0.25s ease" }}>
                     {isDone ? <Check size={13} /> : i + 1}
                   </span>
                   <strong style={{ fontSize: 13, color: "var(--mo-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</strong>
@@ -1868,7 +1885,7 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
               </button>
 
               {isActive && (
-                <div style={{ padding: "0 14px 14px" }}>
+                <div className="kb-section-anim" style={{ padding: "0 14px 14px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "var(--mo-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Section {i + 1} of {steps.length}</span>
                     <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={toggleDone}>
@@ -2315,6 +2332,10 @@ body {
 @keyframes kbFadeInUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 .kb-summary-bar { width: 100%; height: 6px; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden; }
 .kb-summary-bar-fill { height: 100%; background: linear-gradient(90deg, var(--mo-accent), var(--mo-success)); border-radius: 3px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
+.kb-card-anim { animation: kbFadeInUp 0.35s ease; }
+@keyframes kbAccentFlow { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+.kb-section-anim { opacity: 0; animation: kbFadeInUp 0.4s ease forwards; }
+.kb-section-row:hover { background: rgba(0,0,0,0.02); }
 .kb-addcard { border: 2px dashed rgba(79,70,229,0.35); background: rgba(255,255,255,0.55); justify-content: center; }
 .kb-addcard::before, .kb-addcard::after { display: none; }
 .kb-addcard:hover { transform: translateY(-5px); border-color: var(--mo-accent); box-shadow: 0 26px 70px rgba(35,56,86,0.2); }
