@@ -235,7 +235,7 @@ export default function App() {
   const [kbActiveSection, setKbActiveSection] = useState(0);
   const [kbShowSummary, setKbShowSummary] = useState(true);
   const [kbTreeExpanded, setKbTreeExpanded] = useState({});
-  const [aiTab, setAiTab] = useState("chat");
+  const [aiTab, setAiTab] = useState(null);
   const [payView, setPayView] = useState("hub");
   const [adminTab, setAdminTab] = useState("access");
   const [regionFilter, setRegionFilter] = useState("all");
@@ -759,6 +759,7 @@ export default function App() {
                   setView(item.id);
                   if (item.id === "bau") setPayView("hub");
                   if (item.id === "kb") { setKbShowSummary(true); setKbOpenCardId(null); setKbDept(null); }
+                  if (item.id === "ai") setAiTab(null);
                 }}>
                   <Icon size={17} style={{ marginRight: 10, flexShrink: 0 }} />
                   {item.label}
@@ -849,6 +850,20 @@ export default function App() {
 
           {view === "ai" && (
             <div>
+              {aiTab === null && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginTop: 14 }}>
+                  <button className="mo-card mo-clickable" style={{ textAlign: "left" }} onClick={() => setAiTab("chat")}>
+                    <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42, marginBottom: 10 }}><Bot size={20} /></span>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", marginBottom: 4 }}>Chatbot</div>
+                    <div style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Ask questions about payment operations — answered straight from the knowledge base.</div>
+                  </button>
+                  <button className="mo-card mo-clickable" style={{ textAlign: "left" }} onClick={() => setAiTab("sopbot")}>
+                    <span className="kb-medallion" style={{ "--kb-c1": "#18a558", "--kb-c2": "#0f7a3d", width: 42, height: 42, marginBottom: 10 }}><Sparkles size={20} /></span>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)", marginBottom: 4 }}>SOP completeness bot</div>
+                    <div style={{ fontSize: 12.5, color: "var(--mo-muted)" }}>Scans every card for gaps, asks the team, and fills in SOPs from the answers.</div>
+                  </button>
+                </div>
+              )}
               {aiTab === "chat" && <KbBot cards={kbCards} currentUser={currentUser} />}
               {aiTab === "sopbot" && (
                 <SopBot questions={botQuestions} users={users} currentUser={currentUser} pointsLedger={pointsLedger}
