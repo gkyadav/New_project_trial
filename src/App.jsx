@@ -787,9 +787,9 @@ export default function App() {
 
         {view !== "kb" && view !== "ai" && (
           <div style={styles.regionLegend}>
-            <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
+            <div style={{ fontSize: 11, color: "var(--mo-accent)", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
             {Object.values(REGIONS).map(r => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", fontSize: 12.5, fontWeight: 700, marginBottom: 3, color: "#d5e2f7" }}>
+              <div key={r.id} style={{ display: "flex", alignItems: "center", fontSize: 12.5, fontWeight: 700, marginBottom: 3, color: "var(--mo-ink)" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.color, marginRight: 8, flexShrink: 0 }} />
                 {r.name}
               </div>
@@ -797,9 +797,9 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{currentUser.role === "admin" ? "Team lead" : "Team member"}</div>
-          <div style={{ fontSize: 11, color: "#9fb6dd" }}>{currentUser.role === "admin" ? "Reviewer · Publisher" : "Editor · All sections"}</div>
+        <div style={{ marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(15,23,42,0.08)" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mo-ink)" }}>{currentUser.role === "admin" ? "Team lead" : "Team member"}</div>
+          <div style={{ fontSize: 11, color: "var(--mo-muted)" }}>{currentUser.role === "admin" ? "Reviewer · Publisher" : "Editor · All sections"}</div>
         </div>
       </aside>
 
@@ -1230,10 +1230,10 @@ const KB_TINT_MAP = {
   "egypt/logistics": ["#f43f5e", "#f97316"],
   "global/baseline": ["#475569", "#1e293b"],
 };
-const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#2563eb", "#7c3aed"];
+const kbTint = card => KB_TINT_MAP[`${card.country}/${card.section}`] || ["#e8342a", "#c81e1e"];
 
 const DEPT_TINT = {
-  country_policies: ["#2563eb", "#7c3aed"],
+  country_policies: ["#e8342a", "#c81e1e"],
   fulfillment: ["#0891b2", "#18b56f"],
   logistics: ["#f97316", "#f59e0b"],
 };
@@ -1327,7 +1327,7 @@ function KbBot({ cards, currentUser }) {
   return (
     <div style={{ maxWidth: 780, margin: "14px auto 0" }}>
       <div className="mo-card" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-        <span className="kb-medallion" style={{ "--kb-c1": "#2563eb", "--kb-c2": "#7c3aed", width: 42, height: 42 }}><Bot size={20} /></span>
+        <span className="kb-medallion" style={{ "--kb-c1": "#e8342a", "--kb-c2": "#c81e1e", width: 42, height: 42 }}><Bot size={20} /></span>
         <div>
           <div style={{ fontWeight: 900, fontSize: 15, color: "var(--mo-ink)" }}>Ops KB Bot <span className="mo-pill mo-pill-neutral" style={{ marginLeft: 6 }}>training</span></div>
           <div style={{ fontSize: 12, color: "var(--mo-muted)" }}>
@@ -1601,7 +1601,7 @@ function KbSummaryDashboard({ cards, onSelectRegion }) {
 
 /* Shared accent for the active-hierarchy trail: region, department and the
    open card all get the same tint so the whole path reads as one thread. */
-const KB_ACTIVE_STYLE = { background: "linear-gradient(135deg, rgba(56,189,248,0.35), rgba(124,58,237,0.4))", boxShadow: "inset 0 0 0 1px rgba(139,92,246,0.5)" };
+const KB_ACTIVE_STYLE = { background: "linear-gradient(135deg, rgba(232,52,42,0.1), rgba(200,30,30,0.16))", boxShadow: "inset 0 0 0 1px rgba(232,52,42,0.35)" };
 
 function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, openCardId, activeSection, onOpenCard, expanded, setExpanded }) {
   function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
@@ -1615,9 +1615,9 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
           const regionActive = region.id === kbTab;
           return (
             <div key={region.id} style={{ marginBottom: 4 }}>
-              <button onClick={() => { toggle(regionKey); onSelectRegion(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", borderLeft: `3px solid ${regionActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff", transition: "background 0.2s ease", ...(regionActive ? KB_ACTIVE_STYLE : { background: "none" }) }}>
+              <button onClick={() => { toggle(regionKey); onSelectRegion(region.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", borderLeft: `3px solid ${regionActive ? "var(--mo-accent)" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: regionActive ? "var(--mo-accent-2)" : "var(--mo-ink)", transition: "background 0.2s ease", ...(regionActive ? KB_ACTIVE_STYLE : { background: "none" }) }}>
                 <span style={{ fontSize: 13.5, fontWeight: 800 }}>{region.label}</span>
-                <span style={{ fontSize: 11.5, color: "#9fb6dd", fontWeight: 700 }}>{regionCards.length}</span>
+                <span style={{ fontSize: 11.5, color: "var(--mo-muted)", fontWeight: 700 }}>{regionCards.length}</span>
               </button>
 
               {regionOpen && KB_TREE_DEPTS.map(dept => {
@@ -1627,9 +1627,9 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                 const deptActive = regionActive && dept.id === kbDept;
                 return (
                   <div key={dept.id} style={{ marginLeft: 10 }}>
-                    <button onClick={() => { toggle(deptKey); onSelectDept(region.id, dept.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", borderLeft: `3px solid ${deptActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "7px 8px", borderRadius: 8, color: "#d5e2f7", marginBottom: 3, transition: "background 0.2s ease", ...(deptActive ? KB_ACTIVE_STYLE : { background: "rgba(255,255,255,0.05)" }) }}>
+                    <button onClick={() => { toggle(deptKey); onSelectDept(region.id, dept.id); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", border: "none", borderLeft: `3px solid ${deptActive ? "var(--mo-accent)" : "transparent"}`, cursor: "pointer", padding: "7px 8px", borderRadius: 8, color: deptActive ? "var(--mo-accent-2)" : "#475569", marginBottom: 3, transition: "background 0.2s ease", ...(deptActive ? KB_ACTIVE_STYLE : { background: "rgba(15,23,42,0.035)" }) }}>
                       <span style={{ fontSize: 12.5, fontWeight: 800 }}>{dept.label}</span>
-                      <span style={{ fontSize: 11, color: "#9fb6dd", fontWeight: 700 }}>{deptCards.length}</span>
+                      <span style={{ fontSize: 11, color: "var(--mo-muted)", fontWeight: 700 }}>{deptCards.length}</span>
                     </button>
 
                     {deptOpen && deptCards.map(card => {
@@ -1639,13 +1639,13 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                       const cardActive = openCardId === card.id;
                       return (
                         <div key={card.id} style={{ marginLeft: 10, marginBottom: 4 }}>
-                          <button onClick={() => onOpenCard(region.id, card)} style={{ display: "block", width: "100%", border: "none", borderLeft: `3px solid ${cardActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left", transition: "background 0.2s ease", ...(cardActive ? KB_ACTIVE_STYLE : { background: "rgba(255,255,255,0.04)" }) }}>
+                          <button onClick={() => onOpenCard(region.id, card)} style={{ display: "block", width: "100%", border: "none", borderLeft: `3px solid ${cardActive ? "var(--mo-accent)" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left", transition: "background 0.2s ease", ...(cardActive ? KB_ACTIVE_STYLE : { background: "rgba(15,23,42,0.03)" }) }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{card.title}</span>
-                              <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#4ade80" : "#fde047", whiteSpace: "nowrap" }}>{card.progress}%</span>
+                              <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mo-ink)" }}>{card.title}</span>
+                              <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#16a34a" : "#d97706", whiteSpace: "nowrap" }}>{card.progress}%</span>
                             </div>
-                            <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,0.12)", borderRadius: 2, marginTop: 5, overflow: "hidden" }}>
-                              <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#4ade80" : "#fde047" }} />
+                            <div style={{ width: "100%", height: 4, background: "rgba(15,23,42,0.08)", borderRadius: 2, marginTop: 5, overflow: "hidden" }}>
+                              <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#16a34a" : "#f59e0b" }} />
                             </div>
                           </button>
 
@@ -1655,20 +1655,20 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                                 const isWip = openCardId === card.id && activeSection === i && s.status !== "done";
                                 const label = s.status === "done" ? "DONE" : isWip ? "WIP" : "·";
                                 return (
-                                  <button key={i} onClick={() => onOpenCard(region.id, card, i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: isWip ? "rgba(250,204,21,0.08)" : "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
+                                  <button key={i} onClick={() => onOpenCard(region.id, card, i)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: isWip ? "rgba(217,119,6,0.1)" : "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
                                     <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                                       {s.status === "done" ? (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                          <Check size={9} color="#08240f" />
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                          <Check size={9} color="#fff" />
                                         </span>
                                       ) : isWip ? (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#facc15", flexShrink: 0 }} />
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#d97706", flexShrink: 0 }} />
                                       ) : (
-                                        <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #5a6b8c", flexShrink: 0 }} />
+                                        <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #94a3b8", flexShrink: 0 }} />
                                       )}
-                                      <span style={{ fontSize: 11.5, color: "#d5e2f7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                                      <span style={{ fontSize: 11.5, color: "#334155", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
                                     </span>
-                                    <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#4ade80" : isWip ? "#facc15" : "#5a6b8c", flexShrink: 0, marginLeft: 6 }}>{label}</span>
+                                    <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#16a34a" : isWip ? "#d97706" : "var(--mo-muted)", flexShrink: 0, marginLeft: 6 }}>{label}</span>
                                   </button>
                                 );
                               })}
@@ -1678,7 +1678,7 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                       );
                     })}
                     {deptOpen && deptCards.length === 0 && (
-                      <div style={{ fontSize: 11, color: "#5a6b8c", padding: "4px 8px" }}>No cards yet</div>
+                      <div style={{ fontSize: 11, color: "var(--mo-muted)", padding: "4px 8px" }}>No cards yet</div>
                     )}
                   </div>
                 );
@@ -2193,21 +2193,21 @@ function EmptyState({ text }) {
 
 const styles = {
   appShell: { display: "flex", minHeight: "100vh", background: "transparent", fontFamily: "var(--mo-body)", color: "var(--mo-ink)" },
-  sidebar: { width: 250, background: "linear-gradient(180deg, rgba(14,31,70,0.96), rgba(7,18,41,1))", color: "#fff", padding: "24px 16px", display: "flex", flexDirection: "column", flexShrink: 0 },
+  sidebar: { width: 250, background: "#ffffff", color: "var(--mo-ink)", padding: "24px 16px", display: "flex", flexDirection: "column", flexShrink: 0, borderRight: "1px solid rgba(15,23,42,0.08)" },
   brand: { display: "flex", alignItems: "center", gap: 12 },
   brandMark: { display: "flex", alignItems: "center" },
-  brandDot: { width: 14, height: 14, borderRadius: "50%", display: "inline-block", border: "2px solid #0b1734" },
-  brandName: { fontFamily: "var(--mo-display)", fontSize: 16, fontWeight: 900, color: "#fff" },
-  brandSub: { fontSize: 11, fontWeight: 800, color: "#9fb6dd", marginTop: 2 },
-  sidebarNoonBadge: { fontFamily: "var(--mo-display)", fontWeight: 900, fontSize: 16, letterSpacing: -0.5, color: "#1A1A1A", background: "#FEDE00", padding: "6px 12px", borderRadius: 10, display: "inline-block", boxShadow: "0 14px 30px rgba(0,0,0,0.28)" },
-  navItem: { display: "flex", alignItems: "center", width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, background: "transparent", border: "none", color: "#d5e2f7", fontSize: 13.5, fontWeight: 800, cursor: "pointer", marginBottom: 4 },
-  navItemActive: { display: "flex", alignItems: "center", width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, background: "linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2))", border: "none", color: "#fff", fontSize: 13.5, cursor: "pointer", marginBottom: 4, fontWeight: 900, boxShadow: "0 12px 26px rgba(79,70,229,0.34)" },
-  lockedHeading: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 900, color: "#86d8ff", marginBottom: 8, paddingLeft: 14 },
-  phaseTag: { fontSize: 9.5, fontWeight: 800, color: "#9fb6dd", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 999, padding: "1px 6px", marginLeft: 6 },
-  regionLegend: { marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" },
+  brandDot: { width: 14, height: 14, borderRadius: "50%", display: "inline-block", border: "2px solid #fff" },
+  brandName: { fontFamily: "var(--mo-display)", fontSize: 16, fontWeight: 900, color: "var(--mo-ink)" },
+  brandSub: { fontSize: 11, fontWeight: 800, color: "var(--mo-muted)", marginTop: 2 },
+  sidebarNoonBadge: { fontFamily: "var(--mo-display)", fontWeight: 900, fontSize: 16, letterSpacing: -0.5, color: "#1A1A1A", background: "#FEDE00", padding: "6px 12px", borderRadius: 10, display: "inline-block", boxShadow: "0 8px 18px rgba(15,23,42,0.12)" },
+  navItem: { display: "flex", alignItems: "center", width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, background: "transparent", border: "none", color: "#475569", fontSize: 13.5, fontWeight: 800, cursor: "pointer", marginBottom: 4 },
+  navItemActive: { display: "flex", alignItems: "center", width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10, background: "linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2))", border: "none", color: "#fff", fontSize: 13.5, cursor: "pointer", marginBottom: 4, fontWeight: 900, boxShadow: "0 12px 26px rgba(232,52,42,0.34)" },
+  lockedHeading: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 900, color: "var(--mo-accent)", marginBottom: 8, paddingLeft: 14 },
+  phaseTag: { fontSize: 9.5, fontWeight: 800, color: "var(--mo-muted)", border: "1px solid rgba(15,23,42,0.12)", borderRadius: 999, padding: "1px 6px", marginLeft: 6 },
+  regionLegend: { marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(15,23,42,0.08)" },
   main: { flex: 1, display: "flex", flexDirection: "column", minWidth: 0 },
   header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "18px 32px", background: "var(--mo-surface)", borderBottom: "1px solid var(--mo-border)", position: "relative", backdropFilter: "blur(16px)" },
-  headerAccent: { height: 3, background: "linear-gradient(90deg, var(--mo-accent), var(--mo-blue-2), var(--mo-accent-2), #38bdf8)" },
+  headerAccent: { height: 3, background: "linear-gradient(90deg, var(--mo-accent), #ff6b57, var(--mo-accent-2))" },
   headerTitle: { fontFamily: "var(--mo-display)", fontSize: 20, fontWeight: 900, color: "var(--mo-ink)" },
   content: { padding: "24px 32px", flex: 1, overflowY: "auto" },
   grid4: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 },
@@ -2218,25 +2218,25 @@ const styles = {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap');
 :root {
-  --mo-bg: #edf5fb;
-  --mo-surface: rgba(255,255,255,0.9);
+  --mo-bg: #f5f6f8;
+  --mo-surface: rgba(255,255,255,0.96);
   --mo-surface-strong: #ffffff;
-  --mo-surface-alt: #eef5fc;
-  --mo-ink: #071a3d;
-  --mo-muted: #5f7087;
-  --mo-border: rgba(98,121,151,0.2);
-  --mo-accent: #2563eb;
-  --mo-accent-2: #7c3aed;
-  --mo-blue-2: #4f46e5;
+  --mo-surface-alt: #f7f2f1;
+  --mo-ink: #16181d;
+  --mo-muted: #6b7280;
+  --mo-border: rgba(15,23,42,0.1);
+  --mo-accent: #e8342a;
+  --mo-accent-2: #c81e1e;
+  --mo-blue-2: #ef4136;
   --mo-coral: #f97316;
   --mo-gold: #f59e0b;
   --mo-violet: #8b5cf6;
-  --mo-success: #18b56f;
+  --mo-success: #18a558;
   --mo-warn: #b45309;
-  --mo-danger: #e11d48;
+  --mo-danger: #dc2626;
   --mo-locked-bg: rgba(255,255,255,0.55);
-  --mo-shadow: 0 22px 60px rgba(35,56,86,0.13);
-  --mo-shadow-hover: 0 26px 70px rgba(35,56,86,0.2);
+  --mo-shadow: 0 12px 32px rgba(15,23,42,0.08);
+  --mo-shadow-hover: 0 18px 44px rgba(15,23,42,0.12);
   --mo-display: 'Inter', system-ui, 'Segoe UI', sans-serif;
   --mo-body: 'Inter', system-ui, 'Segoe UI', sans-serif;
   --mo-mono: 'IBM Plex Mono', 'Consolas', monospace;
@@ -2244,18 +2244,12 @@ const CSS = `
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    linear-gradient(rgba(20,77,130,0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20,77,130,0.045) 1px, transparent 1px),
-    radial-gradient(circle at top right, rgba(104,189,255,0.34), transparent 30%),
-    radial-gradient(circle at 55% 42%, rgba(226,244,235,0.72), transparent 36%),
-    var(--mo-bg);
-  background-size: 44px 44px, 44px 44px, auto, auto, auto;
+  background: var(--mo-bg);
   color: var(--mo-ink);
   font-family: var(--mo-body);
 }
 .mo-navitem { cursor: pointer; }
-.mo-navitem:hover { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)) !important; color: #fff !important; box-shadow: 0 12px 26px rgba(79,70,229,0.34); }
+.mo-navitem:hover { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)) !important; color: #fff !important; box-shadow: 0 12px 26px rgba(232,52,42,0.34); }
 .mo-locked { display:flex; align-items:center; width:100%; text-align:left; padding:8px 14px; border-radius:10px; background:transparent; border:none; color:#8ea4c8; font-size:12px; font-weight:700; cursor:pointer; margin-bottom:2px; }
 .mo-locked:hover { background: rgba(255,255,255,0.06); color:#e8f0fd; }
 .mo-card { background: var(--mo-surface); border: 1px solid rgba(255,255,255,0.74); border-radius: 18px; padding: 16px 18px; box-shadow: var(--mo-shadow); backdrop-filter: blur(16px); transition: box-shadow 0.15s ease, transform 0.15s ease; }
@@ -2264,10 +2258,10 @@ body {
 .mo-lockedtile { background: var(--mo-locked-bg); border: 1px dashed rgba(98,121,151,0.4); border-radius: 18px; padding: 16px 18px; text-align: left; cursor: pointer; backdrop-filter: blur(10px); }
 .mo-lockedtile:hover { border-color: var(--mo-accent); }
 .mo-btn { display:inline-flex; align-items:center; background:var(--mo-surface-strong); border:1px solid var(--mo-border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:800; color:var(--mo-ink); cursor:pointer; font-family:var(--mo-body); transition: all 0.12s ease; }
-.mo-btn:hover { background: var(--mo-surface-alt); border-color: rgba(79,70,229,0.55); }
+.mo-btn:hover { background: var(--mo-surface-alt); border-color: rgba(232,52,42,0.55); }
 .mo-btn-sm { padding: 6px 10px; font-size: 12.5px; }
-.mo-btn-primary { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-color: transparent; box-shadow: 0 10px 24px rgba(79,70,229,0.24); }
-.mo-btn-primary:hover { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); filter: brightness(0.96); box-shadow: 0 12px 28px rgba(79,70,229,0.32); }
+.mo-btn-primary { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-color: transparent; box-shadow: 0 10px 24px rgba(232,52,42,0.24); }
+.mo-btn-primary:hover { background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); filter: brightness(0.96); box-shadow: 0 12px 28px rgba(232,52,42,0.32); }
 .mo-btn-danger { color: var(--mo-danger); border-color: rgba(251,113,133,0.4); }
 .mo-btn-danger:hover { background: rgba(255,241,242,0.9); border-color: var(--mo-danger); }
 .mo-btn:disabled { opacity: 0.6; cursor: default; }
@@ -2276,19 +2270,19 @@ body {
 .mo-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 900; color: var(--mo-muted); padding: 11px 14px; border-bottom: 1px solid var(--mo-border); background: rgba(238,245,252,0.85); }
 .mo-table td { padding: 11px 14px; border-bottom: 1px solid var(--mo-border); vertical-align: top; }
 .mo-table tr:last-child td { border-bottom: none; }
-.mo-table tr:hover td { background: rgba(37,99,235,0.04); }
+.mo-table tr:hover td { background: rgba(232,52,42,0.04); }
 .mo-mono { font-family: var(--mo-mono); color: var(--mo-ink); }
 .mo-pill { display:inline-block; font-size: 11.5px; padding: 2px 10px; border-radius: 999px; font-weight: 800; }
-.mo-pill-neutral { background: rgba(37,99,235,0.1); color: var(--mo-accent); }
+.mo-pill-neutral { background: rgba(232,52,42,0.1); color: var(--mo-accent); }
 .mo-pill-warn { background: rgba(249,115,22,0.13); color: var(--mo-warn); }
 .mo-pill-success { background: rgba(24,181,111,0.14); color: #0e7a4c; }
 .mo-pill-danger { background: rgba(225,29,72,0.1); color: var(--mo-danger); }
 .mo-select { border: 1px solid var(--mo-border); border-radius: 10px; padding: 7px 10px; font-size: 12.5px; font-family: var(--mo-body); font-weight: 700; color: var(--mo-ink); background: var(--mo-surface-strong); }
 .mo-input { width: 100%; border: 1px solid var(--mo-border); border-radius: 10px; padding: 9px 12px; font-size: 13px; font-weight: 600; font-family: var(--mo-body); background: rgba(255,255,255,0.92); color: var(--mo-ink); box-sizing: border-box; }
-.mo-input:focus, .mo-textarea:focus, .mo-select:focus { outline: none; border-color: rgba(79,70,229,0.55); box-shadow: 0 0 0 4px rgba(79,70,229,0.12); }
+.mo-input:focus, .mo-textarea:focus, .mo-select:focus { outline: none; border-color: rgba(232,52,42,0.55); box-shadow: 0 0 0 4px rgba(232,52,42,0.12); }
 .mo-textarea { width: 100%; border: 1px solid var(--mo-border); border-radius: 10px; padding: 9px 12px; font-size: 13px; font-weight: 600; font-family: var(--mo-body); background: rgba(255,255,255,0.92); color: var(--mo-ink); box-sizing: border-box; resize: vertical; }
 .mo-loginrow { display:flex; align-items:center; justify-content:space-between; width:100%; text-align:left; padding:12px 14px; border-radius:12px; border:1px solid var(--mo-border); background:var(--mo-surface-strong); cursor:pointer; transition: all 0.12s ease; }
-.mo-loginrow:hover { background: var(--mo-surface-alt); border-color: rgba(79,70,229,0.55); transform: translateY(-1px); box-shadow: var(--mo-shadow); }
+.mo-loginrow:hover { background: var(--mo-surface-alt); border-color: rgba(232,52,42,0.55); transform: translateY(-1px); box-shadow: var(--mo-shadow); }
 .mo-loginrow:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
 .mo-toast { position: fixed; top: 18px; right: 18px; background: var(--mo-ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 13px; font-weight: 700; z-index: 50; max-width: 320px; box-shadow: 0 18px 42px rgba(0,0,0,0.25); }
 .mo-spin { animation: mo-spin 1s linear infinite; }
@@ -2308,12 +2302,12 @@ body {
 .kb-pcard { position: relative; aspect-ratio: 5 / 7; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 9px; padding: 40px 16px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.78); background: linear-gradient(160deg, rgba(255,255,255,0.96), rgba(238,245,255,0.88)); box-shadow: var(--mo-shadow); backdrop-filter: blur(14px); cursor: pointer; font-family: var(--mo-body); overflow: hidden; transition: transform 0.18s ease, box-shadow 0.18s ease; }
 .kb-pcard::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 66px; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); opacity: 0.15; pointer-events: none; }
 .kb-pcard::after { content: ""; position: absolute; inset: 0; border-radius: 20px; border: 2px solid transparent; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)) border-box; -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity 0.18s ease; pointer-events: none; }
-.kb-pcard:hover { transform: translateY(-5px) rotate(-0.6deg); box-shadow: 0 26px 70px rgba(35,56,86,0.22), 0 0 34px rgba(79,70,229,0.28); }
+.kb-pcard:hover { transform: translateY(-5px) rotate(-0.6deg); box-shadow: 0 26px 70px rgba(35,56,86,0.22), 0 0 34px rgba(232,52,42,0.28); }
 .kb-pcard:hover::after { opacity: 1; }
 .kb-pip { position: absolute; font-size: 11px; font-weight: 900; letter-spacing: 0.08em; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .kb-pip-top { top: 10px; left: 12px; }
 .kb-pip-bottom { bottom: 10px; right: 12px; transform: rotate(180deg); }
-.kb-medallion { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; box-shadow: 0 12px 26px rgba(79,70,229,0.35); flex-shrink: 0; }
+.kb-medallion { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; box-shadow: 0 12px 26px rgba(232,52,42,0.35); flex-shrink: 0; }
 .kb-pcard-title { font-weight: 900; font-size: 14px; line-height: 1.25; color: var(--mo-ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .kb-pcard-title-big { font-size: 19px; line-height: 1.3; margin-top: 4px; }
 .kb-pcard-foot { margin-top: auto; display: flex; align-items: center; gap: 7px; max-width: 100%; }
@@ -2329,17 +2323,17 @@ body {
 @keyframes kbAccentFlow { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
 .kb-section-anim { opacity: 0; animation: kbFadeInUp 0.4s ease forwards; }
 .kb-section-row:hover { background: rgba(0,0,0,0.02); }
-.kb-addcard { border: 2px dashed rgba(79,70,229,0.35); background: rgba(255,255,255,0.55); justify-content: center; }
+.kb-addcard { border: 2px dashed rgba(232,52,42,0.35); background: rgba(255,255,255,0.55); justify-content: center; }
 .kb-addcard::before, .kb-addcard::after { display: none; }
 .kb-addcard:hover { transform: translateY(-5px); border-color: var(--mo-accent); box-shadow: 0 26px 70px rgba(35,56,86,0.2); }
-.kb-add-plus { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; box-shadow: 0 14px 30px rgba(79,70,229,0.35); }
+.kb-add-plus { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; box-shadow: 0 14px 30px rgba(232,52,42,0.35); }
 .bot-thread { display: flex; flex-direction: column; gap: 12px; }
 .bot-row { display: flex; align-items: flex-end; gap: 8px; }
 .bot-row-user { justify-content: flex-end; }
-.bot-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; flex-shrink: 0; box-shadow: 0 8px 18px rgba(79,70,229,0.3); }
+.bot-avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; flex-shrink: 0; box-shadow: 0 8px 18px rgba(232,52,42,0.3); }
 .bot-bubble { max-width: 78%; background: var(--mo-surface-alt); border: 1px solid var(--mo-border); border-radius: 14px 14px 14px 4px; padding: 10px 14px; font-size: 13px; line-height: 1.5; color: var(--mo-ink); }
-.bot-bubble-user { max-width: 78%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-radius: 14px 14px 4px 14px; padding: 10px 14px; font-size: 13px; font-weight: 600; line-height: 1.5; box-shadow: 0 10px 24px rgba(79,70,229,0.24); }
-.bot-source { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800; color: var(--mo-accent); background: rgba(37,99,235,0.1); border-radius: 999px; padding: 3px 10px; }
+.bot-bubble-user { max-width: 78%; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; border-radius: 14px 14px 4px 14px; padding: 10px 14px; font-size: 13px; font-weight: 600; line-height: 1.5; box-shadow: 0 10px 24px rgba(232,52,42,0.24); }
+.bot-source { display: inline-flex; align-items: center; font-size: 11px; font-weight: 800; color: var(--mo-accent); background: rgba(232,52,42,0.1); border-radius: 999px; padding: 3px 10px; }
 .kb-step { border: 1px solid var(--mo-border); border-radius: 10px; padding: 8px 10px; background: var(--mo-surface-alt); }
 .kb-step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .kb-step-num { display: inline-block; font-size: 10.5px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; color: #fff; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); border-radius: 999px; padding: 2px 9px; }
@@ -2397,14 +2391,14 @@ body {
 .input-shell { display: flex; align-items: center; border: 1px solid rgba(95,112,135,0.24); border-radius: 10px; background: rgba(255,255,255,0.86); box-shadow: inset 0 1px 0 rgba(255,255,255,0.8); overflow: hidden; }
 .input-shell span { flex: 0 0 48px; color: #31517c; font-weight: 900; font-size: 0.8rem; text-align: center; }
 .input-shell input { flex: 1 1 auto; min-width: 0; min-height: 44px; border: 0; background: transparent; box-shadow: none; outline: none; padding: 0 14px 0 0; color: var(--mo-ink); font: inherit; font-weight: 700; }
-.input-shell:focus-within { border-color: rgba(79,70,229,0.55); box-shadow: 0 0 0 4px rgba(79,70,229,0.12); }
+.input-shell:focus-within { border-color: rgba(232,52,42,0.55); box-shadow: 0 0 0 4px rgba(232,52,42,0.12); }
 .forgot-link { justify-self: end; color: #1155d9; font-size: 0.82rem; font-weight: 800; text-decoration: none; }
-.portal-form button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; margin-top: 4px; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; padding: 0 18px; cursor: pointer; font: inherit; font-weight: 900; box-shadow: 0 10px 24px rgba(79,70,229,0.24); }
+.portal-form button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; margin-top: 4px; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--mo-accent), var(--mo-accent-2)); color: #fff; padding: 0 18px; cursor: pointer; font: inherit; font-weight: 900; box-shadow: 0 10px 24px rgba(232,52,42,0.24); }
 .portal-form button:hover { filter: brightness(0.96); }
 .or-divider { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin: 14px 0 12px; color: var(--mo-muted); font-size: 0.88rem; }
 .or-divider::before, .or-divider::after { height: 1px; background: linear-gradient(90deg, transparent, rgba(80,98,130,0.2)); content: ""; }
 .or-divider::after { background: linear-gradient(90deg, rgba(80,98,130,0.2), transparent); }
-.sso-button { width: 100%; min-height: 46px; border: 1px solid rgba(79,70,229,0.18); border-radius: 10px; background: rgba(255,255,255,0.42); color: #071a3d; cursor: pointer; font: inherit; font-weight: 900; box-shadow: none; }
+.sso-button { width: 100%; min-height: 46px; border: 1px solid rgba(232,52,42,0.18); border-radius: 10px; background: rgba(255,255,255,0.42); color: #071a3d; cursor: pointer; font: inherit; font-weight: 900; box-shadow: none; }
 .sso-button:hover { background: rgba(255,255,255,0.62); }
 .support-copy { margin: 14px 0 0; color: var(--mo-muted); font-size: 0.9rem; font-weight: 700; }
 .support-copy a { color: #1155d9; font-weight: 900; text-decoration: none; }
