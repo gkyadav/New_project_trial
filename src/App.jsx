@@ -584,6 +584,7 @@ export default function App() {
     setKbDept(card.department);
     setKbOpenCardId(card.id);
     setKbShowSummary(false);
+    setKbTreeExpanded(prev => ({ ...prev, [`r:${regionId}`]: true, [`d:${regionId}:${card.department}`]: true, [`c:${card.id}`]: true }));
     const steps = cardSteps(card);
     let idx = sectionIndex;
     if (idx == null) {
@@ -841,7 +842,7 @@ export default function App() {
                 newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
                 onSaveSteps={saveCardSteps} onSaveTitle={saveCardTitle} onMerge={mergeRevision} onReject={rejectRevision}
                 onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest}
-                openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId}
+                onOpenCard={openKbCard} openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId}
                 activeSection={kbActiveSection} setActiveSection={setKbActiveSection} />
             )
           )}
@@ -1638,7 +1639,7 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                       const cardActive = openCardId === card.id;
                       return (
                         <div key={card.id} style={{ marginLeft: 10, marginBottom: 4 }}>
-                          <button onClick={() => toggle(cardKey)} style={{ display: "block", width: "100%", border: "none", borderLeft: `3px solid ${cardActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left", transition: "background 0.2s ease", ...(cardActive ? KB_ACTIVE_STYLE : { background: "rgba(255,255,255,0.04)" }) }}>
+                          <button onClick={() => onOpenCard(region.id, card)} style={{ display: "block", width: "100%", border: "none", borderLeft: `3px solid ${cardActive ? "#8b5cf6" : "transparent"}`, cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left", transition: "background 0.2s ease", ...(cardActive ? KB_ACTIVE_STYLE : { background: "rgba(255,255,255,0.04)" }) }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                               <span style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{card.title}</span>
                               <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#4ade80" : "#fde047", whiteSpace: "nowrap" }}>{card.progress}%</span>
@@ -1647,7 +1648,6 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
                               <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#4ade80" : "#fde047" }} />
                             </div>
                           </button>
-                          <button onClick={() => onOpenCard(region.id, card)} style={{ fontSize: 10.5, color: "#86d8ff", background: "none", border: "none", cursor: "pointer", padding: "3px 8px", fontWeight: 700 }}>Open card →</button>
 
                           {cardOpen && (
                             <div style={{ marginLeft: 10, marginTop: 2 }}>
@@ -1690,19 +1690,12 @@ function KbSidebarTree({ cards, kbTab, kbDept, onSelectRegion, onSelectDept, ope
   );
 }
 
-function CountryKB({ country, department, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onSaveSteps, onSaveTitle, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, openCardId, setOpenCardId, activeSection, setActiveSection }) {
+function CountryKB({ country, department, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onSaveSteps, onSaveTitle, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, onOpenCard, openCardId, setOpenCardId, activeSection, setActiveSection }) {
   const [showForm, setShowForm] = useState(false);
   const isManager = currentUser.role === "admin";
   const countryCards = cards.filter(c => c.country === country && (!department || c.department === department));
   const openCard = cards.find(c => c.id === openCardId && c.country === country);
   const deptLabel = department ? KB_TREE_DEPTS.find(d => d.id === department)?.label : null;
-
-  function openFromGrid(card) {
-    const steps = cardSteps(card);
-    const firstPending = steps.findIndex(s => s.status !== "done");
-    setActiveSection(firstPending === -1 ? 0 : firstPending);
-    setOpenCardId(card.id);
-  }
 
   return (
     <div>
@@ -1727,7 +1720,7 @@ function CountryKB({ country, department, cards, revisions, users, currentUser, 
             {countryCards.map(c => (
               <KbPlayingCard key={c.id} card={c} users={users} currentUser={currentUser}
                 pendingCount={revisions.filter(r => r.cardId === c.id && r.status === "pending").length}
-                onOpen={() => openFromGrid(c)} />
+                onOpen={() => onOpenCard(country, c)} />
             ))}
           </div>
         )
