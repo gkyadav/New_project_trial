@@ -1248,9 +1248,8 @@ function KbPlayingCard({ card, users, currentUser, pendingCount, onOpen }) {
         {card.updateRequest && <span className="mo-pill mo-pill-warn">Update due</span>}
         {pendingCount > 0 && <span className="mo-pill mo-pill-warn">{pendingCount} pending</span>}
       </span>
-      <span className="kb-medallion"><BookOpen size={21} /></span>
-      <span className="kb-pcard-title">{card.title}</span>
-      <span className="kb-pcard-body">{cardSteps(card).map((s, i) => `${i + 1}. ${s.name}`).join("\n")}</span>
+      <span className="kb-medallion"><BookOpen size={24} /></span>
+      <span className="kb-pcard-title kb-pcard-title-big">{card.title}</span>
       <span className="kb-pcard-foot">
         <span className="kb-avatar">{initials}</span>
         <span className="kb-owner-name">{ownerName}</span>
@@ -2306,7 +2305,7 @@ body {
 .kb-pip-bottom { bottom: 10px; right: 12px; transform: rotate(180deg); }
 .kb-medallion { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; box-shadow: 0 12px 26px rgba(79,70,229,0.35); flex-shrink: 0; }
 .kb-pcard-title { font-weight: 900; font-size: 14px; line-height: 1.25; color: var(--mo-ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.kb-pcard-body { font-size: 11.5px; line-height: 1.45; color: var(--mo-muted); font-weight: 600; white-space: pre-line; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-pcard-title-big { font-size: 19px; line-height: 1.3; margin-top: 4px; }
 .kb-pcard-foot { margin-top: auto; display: flex; align-items: center; gap: 7px; max-width: 100%; }
 .kb-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--kb-c1), var(--kb-c2)); color: #fff; font-size: 10px; font-weight: 900; flex-shrink: 0; }
 .kb-owner-name { font-size: 11.5px; font-weight: 800; color: var(--mo-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
