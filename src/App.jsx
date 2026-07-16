@@ -508,17 +508,17 @@ export default function App() {
     return { steps: clean };
   }
 
-  function createCard(country, section) {
+  function createCard(country, section, department) {
     if (!newCard.title.trim()) { pushToast("Card title is required"); return; }
     const { steps, error } = cleanSteps(newCard.steps);
     if (error) { pushToast(error); return; }
     const card = {
       id: "k" + Date.now(), title: newCard.title, body: stepsToBody(steps), steps,
-      region: country, country, section, owner: currentUser.id,
+      region: country, country, section, department: department || 'country_policies', owner: currentUser.id,
       status: "draft", author: currentUser.name, updatedAt: new Date().toISOString().slice(0, 10),
     };
     setKbCards(prev => prev.some(c => c.id === card.id) ? prev : [card, ...prev]);
-    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, steps: card.steps, region: country, country, section, owner: card.owner, status: card.status, author: card.author, updated_at: card.updatedAt }));
+    dbWrite(supabase.from("kb_cards").insert({ id: card.id, title: card.title, body: card.body, steps: card.steps, region: country, country, section, department: card.department, owner: card.owner, status: card.status, author: card.author, updated_at: card.updatedAt }));
     addAudit("Create knowledge card", `Draft created: "${card.title}" (${country.toUpperCase()} / ${section})`, country);
     awardPoints(currentUser.id, currentUser.name, POINTS.newCard, `New knowledge card: "${card.title}"`, card.id);
     setNewCard({ title: "", steps: [emptyStep()] });
@@ -1439,11 +1439,19 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [openCardId, setOpenCardId] = useState(null);
+  const [selectedDept, setSelectedDept] = useState(null);
   const isManager = currentUser.role === "admin";
 
-  const list = cards
-    .filter(c => c.country === country && (!sections || c.section === section))
-    .filter(c => (c.title + c.body).toLowerCase().includes(q.toLowerCase()));
+  const countryCards = cards.filter(c => c.country === country);
+  const departments = ['country_policies', 'fulfillment', 'logistics'];
+  const deptLabel = { country_policies: 'Country Policies', fulfillment: 'Fulfillment', logistics: 'Logistics' };
+
+  const cardsByDept = {};
+  departments.forEach(d => {
+    cardsByDept[d] = countryCards.filter(c => c.department === d).filter(c => (c.title + c.body).toLowerCase().includes(q.toLowerCase()));
+  });
+
+  const list = Object.values(cardsByDept).flat();
   const pendingHere = revisions.filter(r => r.status === "pending" && list.some(c => c.id === r.cardId)).length;
   const openCard = cards.find(c => c.id === openCardId);
 
@@ -1465,16 +1473,49 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
         {pendingHere > 0 && <span className="mo-pill mo-pill-warn">{pendingHere} change{pendingHere > 1 ? "s" : ""} awaiting Gaurav</span>}
       </div>
 
-      <div className="kb-grid">
-        <button className="kb-pcard kb-addcard" onClick={() => setShowForm(true)}>
-          <span className="kb-add-plus"><PlusCircle size={30} /></span>
-          <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>Add a card</span>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--mo-muted)" }}>Share what you know — the whole team sees it</span>
+      <div style={{ marginTop: 14 }}>
+        <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => setShowForm(true)} style={{ marginBottom: 14 }}>
+          <PlusCircle size={13} style={{ marginRight: 6 }} />Add a card
         </button>
-        {list.map(c => (
-          <KbPlayingCard key={c.id} card={c} users={users} currentUser={currentUser}
-            pendingCount={revisions.filter(r => r.cardId === c.id && r.status === "pending").length}
-            onOpen={() => setOpenCardId(c.id)} />
+
+        {departments.map(dept => (
+          <div key={dept} style={{ marginBottom: 16 }}>
+            <button onClick={() => setSelectedDept(selectedDept === dept ? null : dept)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", width: "100%", textAlign: "left" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "rgba(0,0,0,0.02)", borderRadius: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--mo-ink)", flex: 1 }}>{deptLabel[dept]}</span>
+                <span style={{ fontSize: 12, color: "var(--mo-muted)" }}>{cardsByDept[dept].length}</span>
+              </div>
+            </button>
+
+            {(selectedDept === dept || cardsByDept[dept].length === 0) && (
+              <div style={{ paddingLeft: 12 }}>
+                {cardsByDept[dept].length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--mo-muted)", padding: "8px 10px" }}>No cards yet</div>
+                ) : (
+                  cardsByDept[dept].map(c => {
+                    const assignee = users.find(u => u.id === c.assignedTo);
+                    return (
+                      <button key={c.id} onClick={() => setOpenCardId(c.id)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", width: "100%", textAlign: "left", marginBottom: 8 }}>
+                        <div style={{ padding: "10px", background: "rgba(0,0,0,0.02)", borderRadius: 6, border: "1px solid rgba(0,0,0,0.08)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--mo-ink)" }}>{c.title}</span>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: "var(--mo-success)", whiteSpace: "nowrap" }}>{c.progress}%</span>
+                          </div>
+                          <div style={{ width: "100%", height: 4, background: "rgba(0,0,0,0.05)", borderRadius: 2, marginBottom: 4, overflow: "hidden" }}>
+                            <div style={{ width: `${c.progress}%`, height: "100%", background: "var(--mo-success)", transition: "width 0.3s" }} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 11, color: "var(--mo-muted)" }}>{c.doneSections}/16 sections</span>
+                            {assignee && <span style={{ fontSize: 10, padding: "2px 6px", background: "rgba(0,0,0,0.05)", borderRadius: 3, whiteSpace: "nowrap" }}>{assignee.name}</span>}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         ))}
       </div>
 
@@ -1482,12 +1523,17 @@ function CountryKB({ country, cards, revisions, users, currentUser, newCard, set
         <div className="kb-modal-overlay" onClick={() => setShowForm(false)}>
           <div className="kb-modal" onClick={e => e.stopPropagation()}>
             <div className="mo-card">
-              <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4, color: "var(--mo-ink)" }}>New draft card — {COUNTRY_LABEL[country]}{sections ? ` / ${sections.find(s => s.id === section).label}` : ""}</div>
+              <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4, color: "var(--mo-ink)" }}>New draft card — {COUNTRY_LABEL[country]}</div>
               <div style={{ fontSize: 12, color: "var(--mo-muted)", marginBottom: 10 }}>You ({currentUser.name}) will own this card. Build it as steps — every step needs a name and a description (one point per line). It stays a draft until Gaurav publishes it.</div>
               <input className="mo-input" placeholder="Card title" value={newCard.title} onChange={e => setNewCard({ ...newCard, title: e.target.value })} style={{ marginBottom: 10 }} />
+              <select className="mo-input" value={newCard.department || 'country_policies'} onChange={e => setNewCard({ ...newCard, department: e.target.value })} style={{ marginBottom: 10 }}>
+                <option value="country_policies">Country Policies</option>
+                <option value="fulfillment">Fulfillment</option>
+                <option value="logistics">Logistics</option>
+              </select>
               <StepEditor steps={newCard.steps} onChange={steps => setNewCard({ ...newCard, steps })} />
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onCreate(country, sections ? section : "general"); setShowForm(false); }}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
+                <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onCreate(country, "general", newCard.department); setShowForm(false); }}><PlusCircle size={13} style={{ marginRight: 6 }} />Save as draft</button>
                 <button className="mo-btn mo-btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
               </div>
             </div>
@@ -1525,6 +1571,11 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
 
   function startEdit() { setETitle(card.title); setESteps(cardSteps(card).map(s => ({ ...s }))); setEditing(true); }
 
+  function toggleSectionStatus(index) {
+    const updated = eSteps.map((s, i) => i === index ? { ...s, status: s.status === 'done' ? 'pending' : 'done' } : s);
+    setESteps(updated);
+  }
+
   return (
     <div className="mo-card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -1537,7 +1588,15 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
               <span style={{ fontWeight: 900, fontSize: 14.5, color: "var(--mo-ink)" }}>{card.title}</span>
             )}
             <StatusPill status={card.status} />
-            {assignee && <span className="mo-pill mo-pill-neutral">Assigned: {assignee.name}</span>}
+            {isManager && (
+              <select className="mo-input" style={{ maxWidth: 160, fontSize: 12, padding: "4px 6px" }} value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value ? e.target.value : null)}>
+                <option value="">Unassigned</option>
+                {users.filter(u => u.active).map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            )}
+            {!isManager && assignee && <span className="mo-pill mo-pill-neutral">Assigned: {assignee.name}</span>}
             {pending.length > 0 && <span className="mo-pill mo-pill-warn">{pending.length} pending change{pending.length > 1 ? "s" : ""}</span>}
           </div>
           {card.updateRequest && (
@@ -1550,8 +1609,25 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
             </div>
           )}
 
-          {editing ? (
-            <div style={{ maxWidth: 640, marginTop: 4 }}>
+          {editing && (
+            <div style={{ maxWidth: 640, marginTop: 4, marginBottom: 12 }}>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-muted)", marginBottom: 6 }}>SECTION PROGRESS</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.05)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.round((eSteps.filter(s => s.status === 'done').length / eSteps.length) * 100)}%`, height: "100%", background: "var(--mo-success)", transition: "width 0.3s" }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-ink)", whiteSpace: "nowrap" }}>{eSteps.filter(s => s.status === 'done').length}/{eSteps.length}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                  {eSteps.map((s, i) => (
+                    <button key={i} onClick={() => toggleSectionStatus(i)} style={{ padding: "6px 8px", background: s.status === 'done' ? "rgba(34,197,94,0.1)" : "rgba(0,0,0,0.02)", border: `1px solid ${s.status === 'done' ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.1)"}`, borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                      <input type="checkbox" checked={s.status === 'done'} onChange={() => {}} style={{ margin: 0, cursor: "pointer" }} />
+                      <span>{s.name.split(' ')[0]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <StepEditor steps={eSteps} onChange={setESteps} />
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button className="mo-btn mo-btn-sm mo-btn-primary" onClick={() => { onPropose(card, eTitle, eSteps); setEditing(false); }}>
@@ -1560,17 +1636,40 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
                 <button className="mo-btn mo-btn-sm" onClick={() => setEditing(false)}>Cancel</button>
               </div>
             </div>
-          ) : (
-            <div style={{ display: "grid", gap: 8, maxWidth: 640, marginTop: 4 }}>
-              {cardSteps(card).map((s, i) => (
-                <div key={i} className="kb-step">
-                  <div className="kb-step-head">
-                    <span className="kb-step-num">Step {i + 1}</span>
-                    <strong style={{ fontSize: 13 }}>{s.name}</strong>
+          )}
+
+          {!editing && (
+            <div style={{ maxWidth: 640, marginTop: 4 }}>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-muted)", marginBottom: 6 }}>SECTION PROGRESS</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ width: "100%", height: 6, background: "rgba(0,0,0,0.05)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${card.progress}%`, height: "100%", background: "var(--mo-success)", transition: "width 0.3s" }} />
                   </div>
-                  <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--mo-ink)", whiteSpace: "nowrap" }}>{card.doneSections}/16</span>
                 </div>
-              ))}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                  {cardSteps(card).map((s, i) => (
+                    <div key={i} style={{ padding: "6px 8px", background: s.status === 'done' ? "rgba(34,197,94,0.1)" : "rgba(0,0,0,0.02)", border: `1px solid ${s.status === 'done' ? "rgba(34,197,94,0.3)" : "rgba(0,0,0,0.1)"}`, borderRadius: 4, display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                      {s.status === 'done' ? <Check size={12} style={{ color: "var(--mo-success)" }} /> : <span style={{ width: 12 }} />}
+                      <span>{s.name.split(' ')[0]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {cardSteps(card).map((s, i) => (
+                  <div key={i} className="kb-step">
+                    <div className="kb-step-head">
+                      <span className="kb-step-num">Section {i + 1}</span>
+                      <strong style={{ fontSize: 13 }}>{s.name}</strong>
+                      {s.status === 'done' && <Check size={12} style={{ marginLeft: "auto", color: "var(--mo-success)" }} />}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "var(--mo-ink)", whiteSpace: "pre-line" }}>{s.detail}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1584,12 +1683,6 @@ function KbCard({ card, revisions, users, isManager, currentUser, onPublish, onU
           )}
           {card.status === "published" && isManager && !editing && (
             <button className="mo-btn mo-btn-sm" onClick={() => onUnpublish(card)}><XCircle size={12} style={{ marginRight: 6 }} />Unpublish</button>
-          )}
-          {isManager && !editing && (
-            <select className="mo-select" value={card.assignedTo || ""} onChange={e => onAssign(card, e.target.value)} title="Assign this card to a team member">
-              <option value="">Assign to…</option>
-              {users.filter(u => u.active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
           )}
           {isManager && !card.updateRequest && !editing && (
             <button className="mo-btn mo-btn-sm" onClick={() => setRequesting(r => !r)}><HelpCircle size={12} style={{ marginRight: 6 }} />{requesting ? "Cancel request" : "Request update"}</button>
