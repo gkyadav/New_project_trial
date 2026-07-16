@@ -12,8 +12,8 @@
   </p>
   <div class="kb-grid">
     {% for card in cards %}
-      <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('payments.open_card', card_id=card.id) }}">
-        <span class="kb-medallion" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;">{{ card.title[:2]|upper }}</span>
+      <a class="kb-pcard" style="--kb-c1:#3b82f6;--kb-c2:#2563eb;" href="{{ url_for('payments.open_card', card_id=card.id) }}">
+        <span class="kb-medallion" style="--kb-c1:#3b82f6;--kb-c2:#2563eb;">{{ card.title[:2]|upper }}</span>
         <span class="kb-pcard-title kb-pcard-title-big">{{ card.title }}</span>
       </a>
     {% endfor %}

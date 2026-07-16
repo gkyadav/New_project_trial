@@ -6,7 +6,7 @@
   </div>
   {% for card in scope_cards %}
     <a href="{{ url_for('kb.open_card', card_id=card.id) }}"
-       style="display:block;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if open_card_id == card.id else 'transparent' }};padding:8px 8px;border-radius:8px;text-align:left;text-decoration:none;background:{{ 'linear-gradient(135deg, rgba(232,52,42,0.1), rgba(200,30,30,0.16))' if open_card_id == card.id else 'rgba(15,23,42,0.03)' }};margin-bottom:4px;">
+       style="display:block;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if open_card_id == card.id else 'transparent' }};padding:8px 8px;border-radius:8px;text-align:left;text-decoration:none;background:{{ 'linear-gradient(135deg, rgba(20,184,166,0.12), rgba(13,148,136,0.18))' if open_card_id == card.id else 'rgba(15,23,42,0.03)' }};margin-bottom:4px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
         <span style="font-size:12.5px;font-weight:800;color:var(--mo-ink);">{{ card.title }}</span>
         <span style="font-size:10.5px;font-weight:800;color:{{ '#16a34a' if card.progress == 100 else 'var(--mo-muted)' }};white-space:nowrap;">{{ card.progress }}%</span>
@@ -41,7 +41,7 @@
       {% set is_active = loop.index0 == active_section %}
       {% set is_done = s.status == 'done' %}
       <a href="{{ url_for('kb.open_card', card_id=open_card.id, section=loop.index0) }}"
-         style="display:flex;align-items:center;gap:8px;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if is_active else 'transparent' }};background:{{ 'rgba(232,52,42,0.06)' if is_active else 'none' }};border-radius:6px;padding:7px 8px;text-align:left;text-decoration:none;">
+         style="display:flex;align-items:center;gap:8px;width:100%;border:none;border-left:3px solid {{ 'var(--mo-accent)' if is_active else 'transparent' }};background:{{ 'rgba(20,184,166,0.08)' if is_active else 'none' }};border-radius:6px;padding:7px 8px;text-align:left;text-decoration:none;">
         {% if is_done %}
           <span style="width:16px;height:16px;border-radius:50%;background:#16a34a;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:10px;">✓</span>
         {% else %}
@@ -95,7 +95,7 @@
       {% for c in scope_cards %}
         {% set pending_count = revisions|selectattr("cardId", "equalto", c.id)|selectattr("status", "equalto", "pending")|list|length %}
         {% set owner = users|selectattr("id", "equalto", c.owner)|list|first %}
-        <a class="kb-pcard" style="--kb-c1:#e8342a;--kb-c2:#c81e1e;" href="{{ url_for('kb.open_card', card_id=c.id) }}">
+        <a class="kb-pcard" style="--kb-c1:#14b8a6;--kb-c2:#0d9488;" href="{{ url_for('kb.open_card', card_id=c.id) }}">
           <span class="kb-pcard-badges">
             <span class="mo-pill mo-pill-{{ 'success' if c.status == 'published' else 'neutral' }}">{{ 'Published' if c.status == 'published' else 'Draft' }}</span>
             {% if pending_count > 0 %}<span class="mo-pill mo-pill-warn">{{ pending_count }} pending</span>{% endif %}
@@ -118,7 +118,7 @@
   {% set history = open_card_revisions|rejectattr("status", "equalto", "pending")|list %}
   <div style="max-width:820px;">
     <div class="mo-card kb-card-anim">
-      <div style="height:5px;margin:-16px -18px 16px;border-radius:18px 18px 0 0;background:linear-gradient(90deg, #e8342a, #c81e1e, #e8342a);"></div>
+      <div style="height:5px;margin:-16px -18px 16px;border-radius:18px 18px 0 0;background:linear-gradient(90deg, #14b8a6, #0d9488, #14b8a6);"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
         <a class="mo-btn mo-btn-sm" href="{{ url_for('kb.global_view') if is_global else url_for('kb.home') }}">← {{ country_label }}</a>
         <div style="display:flex;align-items:center;gap:10px;">
@@ -159,7 +159,7 @@
       </div>
 
       {% if card.updateRequest %}
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;background:rgba(232,52,42,0.08);border:1px solid rgba(232,52,42,0.25);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:12.5px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:12.5px;">
           <span><strong>Update requested</strong> by {{ card.updateRequestedBy }} · {{ card.updateRequestedAt }}: {{ card.updateRequest }}</span>
           {% if user.role == 'admin' %}<form method="post" action="{{ url_for('kb.clear_update', card_id=card.id) }}"><button class="mo-btn mo-btn-sm" type="submit">Clear</button></form>{% endif %}
         </div>
@@ -177,16 +177,16 @@
 
       <div style="margin:4px 0 14px;">
         <div style="width:100%;height:7px;background:rgba(0,0,0,0.05);border-radius:4px;overflow:hidden;">
-          <div style="width:{{ card.progress }}%;height:100%;border-radius:4px;background:{{ 'linear-gradient(90deg, var(--mo-success), #1FBE84)' if card.progress == 100 else 'linear-gradient(90deg, #e8342a, #c81e1e)' }};"></div>
+          <div style="width:{{ card.progress }}%;height:100%;border-radius:4px;background:{{ 'linear-gradient(90deg, var(--mo-success), #1FBE84)' if card.progress == 100 else 'linear-gradient(90deg, #14b8a6, #0d9488)' }};"></div>
         </div>
       </div>
 
       {% set s = steps[active_section] if active_section < steps|length else {} %}
       {% set is_done = s.status == 'done' %}
-      <div class="kb-section-anim" style="border-radius:12px;border:1px solid #e8342a59;overflow:hidden;background:#e8342a0a;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-left:4px solid {{ 'var(--mo-success)' if is_done else '#e8342a' }};flex-wrap:wrap;gap:8px;">
+      <div class="kb-section-anim" style="border-radius:12px;border:1px solid #14b8a659;overflow:hidden;background:#14b8a60a;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-left:4px solid {{ 'var(--mo-success)' if is_done else '#14b8a6' }};flex-wrap:wrap;gap:8px;">
           <span style="display:flex;align-items:center;gap:10px;min-width:0;">
-            <span style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:{{ 'linear-gradient(135deg, var(--mo-success), #1FBE84)' if is_done else 'linear-gradient(135deg, #e8342a, #c81e1e)' }};color:#fff;font-size:11px;font-weight:800;">{{ '✓' if is_done else active_section + 1 }}</span>
+            <span style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:{{ 'linear-gradient(135deg, var(--mo-success), #1FBE84)' if is_done else 'linear-gradient(135deg, #14b8a6, #0d9488)' }};color:#fff;font-size:11px;font-weight:800;">{{ '✓' if is_done else active_section + 1 }}</span>
             <span style="font-size:11px;font-weight:800;color:var(--mo-muted);text-transform:uppercase;letter-spacing:0.08em;">Section {{ active_section + 1 }} of {{ steps|length }}</span>
           </span>
           <form method="post" action="{{ url_for('kb.toggle_done', card_id=card.id, idx=active_section) }}">

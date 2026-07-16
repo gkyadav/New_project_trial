@@ -8,9 +8,9 @@ import string
 from datetime import datetime
 
 REGIONS = {
-    "uae": {"id": "uae", "name": "United Arab Emirates", "short": "UAE", "color": "#e8342a"},
+    "uae": {"id": "uae", "name": "United Arab Emirates", "short": "UAE", "color": "#3b82f6"},
     "ksa": {"id": "ksa", "name": "Saudi Arabia", "short": "KSA", "color": "#18a558"},
-    "egypt": {"id": "egypt", "name": "Egypt", "short": "EGY", "color": "#64748b"},
+    "egypt": {"id": "egypt", "name": "Egypt", "short": "EGY", "color": "#d97706"},
 }
 
 NAV = [
