@@ -229,6 +229,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState("bau");
   const [kbTab, setKbTab] = useState("uae");
+  const [kbOpenCardId, setKbOpenCardId] = useState(null);
+  const [kbTreeExpanded, setKbTreeExpanded] = useState({});
   const [payView, setPayView] = useState("hub");
   const [adminTab, setAdminTab] = useState("access");
   const [regionFilter, setRegionFilter] = useState("all");
@@ -723,15 +725,20 @@ export default function App() {
           })}
         </nav>
 
-        <div style={styles.regionLegend}>
-          <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
-          {Object.values(REGIONS).map(r => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", fontSize: 12.5, fontWeight: 700, marginBottom: 3, color: "#d5e2f7" }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.color, marginRight: 8, flexShrink: 0 }} />
-              {r.name}
-            </div>
-          ))}
-        </div>
+        {view === "kb" ? (
+          <KbSidebarTree cards={kbCards} kbTab={kbTab} setKbTab={setKbTab} setOpenCardId={setKbOpenCardId}
+            expanded={kbTreeExpanded} setExpanded={setKbTreeExpanded} currentUser={currentUser} />
+        ) : (
+          <div style={styles.regionLegend}>
+            <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 6, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Regions</div>
+            {Object.values(REGIONS).map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", fontSize: 12.5, fontWeight: 700, marginBottom: 3, color: "#d5e2f7" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.color, marginRight: 8, flexShrink: 0 }} />
+                {r.name}
+              </div>
+            ))}
+          </div>
+        )}
       </aside>
 
       <div style={styles.main}>
@@ -780,7 +787,8 @@ export default function App() {
                 <CountryKB key={kbTab} country={kbTab} cards={kbCards} revisions={kbRevisions} users={users} currentUser={currentUser}
                   newCard={newCard} setNewCard={setNewCard} onCreate={createCard} onPublish={publishCard} onUnpublish={unpublishCard} onDelete={deleteCard}
                   onPropose={proposeCardEdit} onMerge={mergeRevision} onReject={rejectRevision}
-                  onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest} />
+                  onAssign={assignCard} onRequestUpdate={requestCardUpdate} onClearUpdate={clearUpdateRequest}
+                  openCardId={kbOpenCardId} setOpenCardId={setKbOpenCardId} />
               )}
             </div>
           )}
@@ -1433,12 +1441,111 @@ function SopBot({ questions, users, currentUser, pointsLedger, onScan, onAnswer,
   );
 }
 
-function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate }) {
+const KB_TREE_REGIONS = [
+  { id: "global", label: "Global Policy" },
+  { id: "uae", label: "UAE" },
+  { id: "ksa", label: "KSA" },
+  { id: "egypt", label: "Egypt" },
+];
+const KB_TREE_DEPTS = [
+  { id: "country_policies", label: "Country Policies" },
+  { id: "fulfillment", label: "Fulfillment" },
+  { id: "logistics", label: "Logistics" },
+];
+
+function KbSidebarTree({ cards, kbTab, setKbTab, setOpenCardId, expanded, setExpanded, currentUser }) {
+  function toggle(key) { setExpanded(prev => ({ ...prev, [key]: !prev[key] })); }
+  function openCard(regionId, card) { setKbTab(regionId); setOpenCardId(card.id); }
+
+  return (
+    <div style={{ marginTop: 20, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ fontSize: 11, color: "#86d8ff", marginBottom: 8, letterSpacing: "0.14em", fontWeight: 900, textTransform: "uppercase" }}>Knowledge base</div>
+      <div style={{ overflowY: "auto", flex: 1, paddingRight: 4 }}>
+        {KB_TREE_REGIONS.map(region => {
+          const regionKey = `r:${region.id}`;
+          const regionCards = cards.filter(c => c.country === region.id);
+          const regionOpen = !!expanded[regionKey];
+          return (
+            <div key={region.id} style={{ marginBottom: 4 }}>
+              <button onClick={() => toggle(regionKey)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, color: "#fff" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800 }}>{region.label}</span>
+                <span style={{ fontSize: 11.5, color: "#9fb6dd", fontWeight: 700 }}>{regionCards.length}</span>
+              </button>
+
+              {regionOpen && KB_TREE_DEPTS.map(dept => {
+                const deptKey = `d:${region.id}:${dept.id}`;
+                const deptCards = regionCards.filter(c => c.department === dept.id);
+                const deptOpen = !!expanded[deptKey];
+                return (
+                  <div key={dept.id} style={{ marginLeft: 10 }}>
+                    <button onClick={() => toggle(deptKey)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "rgba(255,255,255,0.05)", border: "none", cursor: "pointer", padding: "7px 8px", borderRadius: 8, color: "#d5e2f7", marginBottom: 3 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{dept.label}</span>
+                      <span style={{ fontSize: 11, color: "#9fb6dd", fontWeight: 700 }}>{deptCards.length}</span>
+                    </button>
+
+                    {deptOpen && deptCards.map(card => {
+                      const cardKey = `c:${card.id}`;
+                      const cardOpen = !!expanded[cardKey];
+                      const steps = cardSteps(card);
+                      return (
+                        <div key={card.id} style={{ marginLeft: 10, marginBottom: 4 }}>
+                          <button onClick={() => toggle(cardKey)} style={{ display: "block", width: "100%", background: "rgba(255,255,255,0.04)", border: "none", cursor: "pointer", padding: "8px 8px", borderRadius: 8, textAlign: "left" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{card.title}</span>
+                              <span style={{ fontSize: 10.5, fontWeight: 800, color: card.progress === 100 ? "#4ade80" : "#fde047", whiteSpace: "nowrap" }}>{card.progress}%</span>
+                            </div>
+                            <div style={{ width: "100%", height: 4, background: "rgba(255,255,255,0.12)", borderRadius: 2, marginTop: 5, overflow: "hidden" }}>
+                              <div style={{ width: `${card.progress}%`, height: "100%", background: card.progress === 100 ? "#4ade80" : "#fde047" }} />
+                            </div>
+                          </button>
+                          <button onClick={() => openCard(region.id, card)} style={{ fontSize: 10.5, color: "#86d8ff", background: "none", border: "none", cursor: "pointer", padding: "3px 8px", fontWeight: 700 }}>Open card →</button>
+
+                          {cardOpen && (
+                            <div style={{ marginLeft: 10, marginTop: 2 }}>
+                              {steps.map((s, i) => (
+                                <button key={i} onClick={() => openCard(region.id, card)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: "5px 8px", borderRadius: 6, textAlign: "left" }}>
+                                  <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                    {s.status === "done" ? (
+                                      <span style={{ width: 14, height: 14, borderRadius: "50%", background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                        <Check size={9} color="#08240f" />
+                                      </span>
+                                    ) : (
+                                      <span style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid #5a6b8c", flexShrink: 0 }} />
+                                    )}
+                                    <span style={{ fontSize: 11.5, color: "#d5e2f7", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {s.name}</span>
+                                  </span>
+                                  <span style={{ fontSize: 9.5, fontWeight: 800, color: s.status === "done" ? "#4ade80" : "#5a6b8c", flexShrink: 0, marginLeft: 6 }}>{s.status === "done" ? "DONE" : "·"}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {deptOpen && deptCards.length === 0 && (
+                      <div style={{ fontSize: 11, color: "#5a6b8c", padding: "4px 8px" }}>No cards yet</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff" }}>{currentUser.role === "admin" ? "Team lead" : "Team member"}</div>
+        <div style={{ fontSize: 11, color: "#9fb6dd" }}>{currentUser.role === "admin" ? "Reviewer · Publisher" : "Editor · All sections"}</div>
+      </div>
+    </div>
+  );
+}
+
+function CountryKB({ country, cards, revisions, users, currentUser, newCard, setNewCard, onCreate, onPublish, onUnpublish, onDelete, onPropose, onMerge, onReject, onAssign, onRequestUpdate, onClearUpdate, openCardId, setOpenCardId }) {
   const sections = KB_SECTIONS[country];
   const [section, setSection] = useState(sections ? sections[0].id : "general");
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [openCardId, setOpenCardId] = useState(null);
   const [selectedDept, setSelectedDept] = useState(null);
   const isManager = currentUser.role === "admin";
 
