@@ -113,6 +113,13 @@ const NAV = [
   { id: "admin", label: "Admin", icon: ShieldCheck, roles: ["reviewer", "admin"] },
 ];
 
+/* Demo-only local admin login: bypasses Supabase Auth entirely (no real
+   session, no RLS access), so it runs on the bundled INITIAL_* mock data
+   instead of live Supabase rows. Credentials are visible to anyone who
+   opens the shipped JS — do not rely on this for real access control. */
+const DEMO_ADMIN_ID = "SuperAdmin";
+const DEMO_ADMIN_PASSWORD = "SuperAdmin@123";
+
 const STATUS_LABEL = {
   unassigned: "Unassigned", assigned: "Assigned", in_review: "In AI review",
   approved: "Sent (mock)", resolved: "Resolved",
@@ -264,11 +271,46 @@ export default function App() {
     setTimeout(() => setToast(null), 2600);
   }
 
-  /* Fire a Supabase write and surface failures without blocking the UI. */
+  /* Fire a Supabase write and surface failures without blocking the UI.
+     The demo admin has no real session, so its writes never leave the
+     browser — skip the call instead of letting every action toast an RLS
+     "Sync error". */
   function dbWrite(query) {
+    if (currentUser?.id === DEMO_ADMIN_ID) return;
     Promise.resolve(query).then(({ error }) => {
       if (error) pushToast("Sync error: " + error.message);
     });
+  }
+
+  /* Demo admin login: seeds local state from the bundled mock data instead
+     of hydrating from Supabase, then signs in locally without a real
+     Supabase Auth session. */
+  function loginAsDemoAdmin() {
+    setUsers(INITIAL_USERS.map(u => ({ ...u, title: "", regions: u.region ? [u.region] : [] })));
+    setEmails(INITIAL_EMAILS);
+    setPayments(INITIAL_PAYMENTS);
+    setKbCards(INITIAL_KB.map(c => ({
+      ...c,
+      country: c.region === "all" ? "global" : c.region,
+      section: "general",
+      department: "country_policies",
+      owner: DEMO_ADMIN_ID,
+      assignedTo: null,
+      updateRequest: "",
+      updateRequestedBy: null,
+      updateRequestedAt: null,
+      steps: null,
+      progress: 0,
+      doneSections: 0,
+    })));
+    setKbRevisions([]);
+    setPointsLedger([]);
+    setBotQuestions([]);
+    setAuditLog([]);
+    setDataReady(true);
+    setCurrentUser({ id: DEMO_ADMIN_ID, name: "Super Admin", role: "admin", region: null, active: true, title: "Super Admin (demo)", regions: [] });
+    setView("bau");
+    setRegionFilter("all");
   }
 
   function bauStateFromRows(rows) {
@@ -434,7 +476,12 @@ export default function App() {
      Site URL / template). Real per-user Supabase Auth session — RLS and
      team-only access are unaffected. Remove once OTP is confirmed working. */
   async function loginWithTempPassword(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    const trimmed = email.trim();
+    if (trimmed === DEMO_ADMIN_ID && password === DEMO_ADMIN_PASSWORD) {
+      loginAsDemoAdmin();
+      return null;
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email: trimmed.toLowerCase(), password });
     return error ? "Sign-in failed: incorrect noon email or temporary password." : null;
   }
 
@@ -1057,7 +1104,7 @@ function LoginScreen({ onRequestOtp, onVerifyOtp, onTempPassword, restoring }) {
               <label htmlFor="login-email-temp">Official noon email</label>
               <div className="input-shell">
                 <span>ID</span>
-                <input id="login-email-temp" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" placeholder="yourname@noon.com" required />
+                <input id="login-email-temp" type="text" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" placeholder="yourname@noon.com" required />
               </div>
               <label htmlFor="login-temp-pw">Temporary password</label>
               <div className="input-shell">
