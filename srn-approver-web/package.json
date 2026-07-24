@@ -1,0 +1,8 @@
+{
+  "name": "srn-approver-web",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "playwright-core": "^1.47.0"
+  }
+}
