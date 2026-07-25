@@ -87,6 +87,9 @@
           <div class="results" id="results"></div>
           <div class="final" id="final"></div>
         </div>
+
+        <button id="endSessionBtn" style="margin-top:14px; background:#fff; color:#b91c1c; border:1px solid #f3c6c2;">End Session</button>
+        <p class="note">Click this once you're done approving to free up the browser session right away, instead of leaving it running idle.</p>
       </div>
     </div>
 
@@ -200,6 +203,26 @@
           showError("Error: " + err.message);
         } finally {
           btn.disabled = false;
+        }
+      });
+
+      document.getElementById("endSessionBtn").addEventListener("click", async () => {
+        if (!sessionId) return;
+        const btn = document.getElementById("endSessionBtn");
+        btn.disabled = true;
+        btn.textContent = "Ending...";
+        try {
+          await fetch("/api/end-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId }),
+          });
+          sessionId = null;
+          btn.textContent = "Session ended";
+        } catch (err) {
+          showError("Error ending session: " + err.message);
+          btn.disabled = false;
+          btn.textContent = "End Session";
         }
       });
     </script>
